@@ -127,8 +127,39 @@ struct KingdomBuilding: Identifiable, Codable {
     var jitterX: CGFloat
     var jitterY: CGFloat
     var scale: CGFloat = 0.0
+    var builtAt: Date = Date()
     init(id: UUID = UUID(), type: BuildingType, col: Int, row: Int, jitterX: CGFloat = 0, jitterY: CGFloat = 0) {
         self.id = id; self.type = type; self.col = col; self.row = row; self.jitterX = jitterX; self.jitterY = jitterY
+    }
+}
+
+struct TaskHistoryEntry: Identifiable, Codable {
+    let id: UUID
+    let title: String
+    let topic: String
+    let completedAt: Date
+    let coinsEarned: Int
+    let wasGroupComplete: Bool
+    init(id: UUID = UUID(), title: String, topic: String, completedAt: Date = Date(), coinsEarned: Int, wasGroupComplete: Bool = false) {
+        self.id = id; self.title = title; self.topic = topic; self.completedAt = completedAt; self.coinsEarned = coinsEarned; self.wasGroupComplete = wasGroupComplete
+    }
+}
+
+struct KnowledgeEntry: Identifiable, Codable {
+    let id: UUID
+    var topic: String
+    var tasksCompleted: Int
+    var quizScore: Int
+    var lastStudied: Date
+    var masteryLevel: Int
+    init(id: UUID = UUID(), topic: String, tasksCompleted: Int = 0, quizScore: Int = 0, lastStudied: Date = Date(), masteryLevel: Int = 0) {
+        self.id = id; self.topic = topic; self.tasksCompleted = tasksCompleted; self.quizScore = quizScore; self.lastStudied = lastStudied; self.masteryLevel = masteryLevel
+    }
+    var masteryLabel: String {
+        switch masteryLevel { case 0: return "Beginner"; case 1: return "Familiar"; case 2: return "Competent"; case 3: return "Proficient"; default: return "Expert" }
+    }
+    var masteryColor: Color {
+        switch masteryLevel { case 0: return .gray; case 1: return .blue; case 2: return .green; case 3: return .purple; default: return .orange }
     }
 }
 
@@ -154,18 +185,24 @@ class KingdomState: ObservableObject {
     @Published var lastCoinsEarned: Int = 0
     @Published var lastGroupBonus: Int = 0
     @Published var showShopHint: Bool = false
+    @Published var selectedBuilding: KingdomBuilding? = nil
+    @Published var taskHistory: [TaskHistoryEntry] = []
+    @Published var knowledgeMap: [KnowledgeEntry] = []
+    @Published var groupTopics: [UUID: String] = [:]
 
     let focusDuration: Int = 15
     let coinsPerTask: Int = 10
     let groupBonusCoins: Int = 50
 
-    // MARK: Kingdom Stats (computed from placed buildings)
+    // MARK: Kingdom Stats
 
     var population: Int { buildings.filter { $0.type.category == .housing }.reduce(0) { $0 + $1.type.benefitValue } }
     var economyIncome: Int { buildings.filter { $0.type.category == .economy }.reduce(0) { $0 + $1.type.benefitValue } }
     var xpBoostPercent: Int { buildings.filter { $0.type.category == .culture }.reduce(0) { $0 + $1.type.benefitValue } }
     var streakShield: Int { buildings.filter { $0.type.category == .defense }.reduce(0) { $0 + $1.type.benefitValue } }
     var beautyScore: Int { buildings.filter { $0.type.category == .nature }.reduce(0) { $0 + $1.type.benefitValue } }
+
+    func buildingsInZone(_ cat: ShopCategory) -> [KingdomBuilding] { buildings.filter { $0.type.category == cat } }
 
     var level: Int {
         let xp = totalXP
@@ -175,18 +212,9 @@ class KingdomState: ObservableObject {
         return 10
     }
     var baseXP: Int { totalFocusMinutes * 10 + buildingCount * 50 + coins }
-    var totalXP: Int {
-        let boost = Double(xpBoostPercent) / 100.0
-        return Int(Double(baseXP) * (1.0 + boost))
-    }
-    var xpForCurrentLevel: Int {
-        let t = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5500, 99999]
-        return t[min(level, t.count - 1) - 1]
-    }
-    var xpForNextLevel: Int {
-        let t = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5500, 99999]
-        return t[min(level, t.count - 1)]
-    }
+    var totalXP: Int { Int(Double(baseXP) * (1.0 + Double(xpBoostPercent) / 100.0)) }
+    var xpForCurrentLevel: Int { [0,100,300,600,1000,1500,2200,3000,4000,5500,99999][min(level,10)-1] }
+    var xpForNextLevel: Int { [0,100,300,600,1000,1500,2200,3000,4000,5500,99999][min(level,10)] }
     var xpProgress: Double {
         let c = totalXP - xpForCurrentLevel; let n = xpForNextLevel - xpForCurrentLevel
         guard n > 0 else { return 1.0 }; return min(1.0, Double(c) / Double(n))
@@ -199,43 +227,40 @@ class KingdomState: ObservableObject {
         default: return "Legendary Realm"
         }
     }
+    var todayTaskCount: Int {
+        let cal = Calendar.current
+        return taskHistory.filter { cal.isDateInToday($0.completedAt) }.count
+    }
+    var totalCoinsEarned: Int { taskHistory.reduce(0) { $0 + $1.coinsEarned } }
 
     // MARK: AI City Advisor
 
     var aiAdvisorTip: String {
         if buildings.isEmpty { return "Start by building a Cottage to settle your first citizens!" }
         let cats = Dictionary(grouping: buildings, by: { $0.type.category })
-        let housingCount = cats[.housing]?.count ?? 0
-        let economyCount = cats[.economy]?.count ?? 0
-        let cultureCount = cats[.culture]?.count ?? 0
-        let defenseCount = cats[.defense]?.count ?? 0
-        let natureCount = cats[.nature]?.count ?? 0
-        let total = buildings.count
-
-        if economyCount == 0 && total >= 1 { return "Build a Market Stall to start earning passive income!" }
-        if defenseCount == 0 && focusStreak >= 3 { return "Your streak is valuable! Build a Watchtower to protect it." }
-        if cultureCount == 0 && total >= 3 { return "A Library would boost your XP — level up faster!" }
-        if natureCount == 0 && total >= 4 { return "Your citizens want a Garden! Beautify your kingdom." }
-        if Double(economyCount) / Double(max(total, 1)) < 0.15 { return "Your economy is weak — invest in more shops!" }
-        if Double(housingCount) / Double(max(total, 1)) < 0.15 { return "Build more housing to grow your population!" }
-        if Double(cultureCount) / Double(max(total, 1)) < 0.1 { return "Culture buildings boost XP — consider a School!" }
-        if focusStreak >= 5 && streakShield < 2 { return "Great streak! Upgrade defenses to protect it." }
-        if beautyScore < 15 && total >= 6 { return "Parks and fountains make your kingdom beautiful!" }
-
-        let tips = [
-            "Great balance! Keep growing all categories.",
-            "Your kingdom is thriving! Try upgrading to bigger buildings.",
-            "Diversify your kingdom for the best bonuses!",
-            "Every building makes your kingdom stronger!",
-            "You're building an amazing kingdom! Keep it up!"
-        ]
-        return tips[total % tips.count]
+        let h = cats[.housing]?.count ?? 0; let e = cats[.economy]?.count ?? 0
+        let c = cats[.culture]?.count ?? 0; let d = cats[.defense]?.count ?? 0
+        let n = cats[.nature]?.count ?? 0; let t = buildings.count
+        if e == 0 && t >= 1 { return "Build a Market Stall — start earning passive income!" }
+        if d == 0 && focusStreak >= 3 { return "Protect your streak! Build a Watchtower on the border." }
+        if c == 0 && t >= 3 { return "A Library in the Cultural Quarter will boost XP!" }
+        if n == 0 && t >= 4 { return "Citizens want parks! Beautify with a Garden." }
+        if Double(e)/Double(max(t,1)) < 0.15 { return "Economy is weak — invest in more shops!" }
+        if Double(h)/Double(max(t,1)) < 0.15 { return "Build more housing to grow population!" }
+        if focusStreak >= 5 && streakShield < 2 { return "Great streak! Upgrade your border defenses." }
+        return ["Great balance! Keep growing.", "Try upgrading to bigger buildings!", "Diversify for best bonuses!",
+                "Tap any building to see inside!", "Your kingdom is thriving!"][t % 5]
     }
 
     // MARK: Actions
 
-    func addTasks(_ newTasks: [TaskPiece], groupID: UUID) {
+    func addTasks(_ newTasks: [TaskPiece], groupID: UUID, topic: String = "") {
         tasks.append(contentsOf: newTasks.map { var t = $0; t.groupID = groupID; return t })
+        if !topic.isEmpty { groupTopics[groupID] = topic }
+    }
+
+    func renameTask(id: UUID, newTitle: String) {
+        if let i = tasks.firstIndex(where: { $0.id == id }) { tasks[i].title = newTitle }
     }
 
     func completeTask(_ task: TaskPiece) {
@@ -244,21 +269,28 @@ class KingdomState: ObservableObject {
         totalFocusMinutes += task.minutes
         focusStreak += 1
 
-        lastCoinsEarned = coinsPerTask
-        lastGroupBonus = 0
+        lastCoinsEarned = coinsPerTask; lastGroupBonus = 0
         coins += coinsPerTask
 
         let groupComplete = checkGroupCompletion(groupID: task.groupID)
-        if groupComplete {
-            lastGroupBonus = groupBonusCoins
-            coins += groupBonusCoins
-        }
+        if groupComplete { lastGroupBonus = groupBonusCoins; coins += groupBonusCoins }
 
-        showCelebration = true
-        showShopHint = true
-        if level > oldLevel {
-            previousLevel = oldLevel
-            showLevelUp = true
+        let topic = groupTopics[task.groupID] ?? TaskAI.extractTopic(from: task.title)
+        taskHistory.append(TaskHistoryEntry(title: task.title, topic: topic, coinsEarned: coinsPerTask + (groupComplete ? groupBonusCoins : 0), wasGroupComplete: groupComplete))
+        updateKnowledge(topic: topic, wasGroupComplete: groupComplete)
+
+        showCelebration = true; showShopHint = true
+        if level > oldLevel { previousLevel = oldLevel; showLevelUp = true }
+    }
+
+    func updateKnowledge(topic: String, wasGroupComplete: Bool) {
+        let normalized = topic.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let i = knowledgeMap.firstIndex(where: { $0.topic.lowercased() == normalized }) {
+            knowledgeMap[i].tasksCompleted += 1
+            knowledgeMap[i].lastStudied = Date()
+            if wasGroupComplete && knowledgeMap[i].masteryLevel < 4 { knowledgeMap[i].masteryLevel += 1 }
+        } else {
+            knowledgeMap.append(KnowledgeEntry(topic: topic.capitalized, tasksCompleted: 1, masteryLevel: wasGroupComplete ? 1 : 0))
         }
     }
 
@@ -266,38 +298,36 @@ class KingdomState: ObservableObject {
     func checkGroupCompletion(groupID: UUID) -> Bool {
         let g = tasks.filter { $0.groupID == groupID }
         if g.allSatisfy({ $0.completed }) && !g.isEmpty && !completedGroups.contains(groupID) {
-            completedGroups.insert(groupID)
-            return true
+            completedGroups.insert(groupID); return true
         }
         return false
     }
 
     func purchaseBuilding(type: BuildingType) {
         guard coins >= type.cost else { return }
-        coins -= type.cost
-        buildingCount += 1
-        let col = (buildingCount - 1) % 5
-        let row = (buildingCount - 1) / 5
-        let building = KingdomBuilding(
-            type: type, col: col, row: row,
-            jitterX: CGFloat.random(in: -0.02...0.02),
-            jitterY: CGFloat.random(in: -0.01...0.01)
-        )
+        coins -= type.cost; buildingCount += 1
+        let zoneBuildings = buildingsInZone(type.category)
+        let idx = zoneBuildings.count
+        let col = idx % 4; let row = idx / 4
+        let building = KingdomBuilding(type: type, col: col, row: row,
+            jitterX: CGFloat.random(in: -0.015...0.015), jitterY: CGFloat.random(in: -0.008...0.008))
         buildings.append(building)
         withAnimation(.spring(response: 0.8, dampingFraction: 0.6)) {
             if let i = buildings.firstIndex(where: { $0.id == building.id }) { buildings[i].scale = 1.0 }
         }
     }
 
-    func collectEconomyIncome() {
-        guard economyIncome > 0 else { return }
-        coins += economyIncome
-    }
-
+    func collectEconomyIncome() { guard economyIncome > 0 else { return }; coins += economyIncome }
     func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
+    func buildingsOfType(_ type: BuildingType) -> Int { buildings.filter { $0.type == type }.count }
 
-    func buildingsOfType(_ type: BuildingType) -> Int {
-        buildings.filter { $0.type == type }.count
+    func historyForCategory(_ cat: ShopCategory) -> [TaskHistoryEntry] {
+        let catTopics = knowledgeMap.map { $0.topic.lowercased() }
+        switch cat {
+        case .culture: return taskHistory
+        case .economy: return taskHistory.filter { $0.coinsEarned > 10 }
+        default: return Array(taskHistory.suffix(5))
+        }
     }
 
     func loadDemoTask() {
@@ -306,7 +336,7 @@ class KingdomState: ObservableObject {
             TaskPiece(title: "Review core concepts", minutes: 25, groupID: g),
             TaskPiece(title: "Practice with examples", minutes: 25, groupID: g),
             TaskPiece(title: "Test your understanding", minutes: 25, groupID: g)
-        ], groupID: g)
+        ], groupID: g, topic: "Core Study Skills")
     }
 }
 
@@ -827,33 +857,42 @@ struct LevelProgressBar: View {
     }
 }
 
-// MARK: - Kingdom Landscape (Buildings ON Ground)
+// MARK: - Kingdom Landscape (Zoned Districts)
 
 struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
     var skyColors: [Color] {
         switch kingdom.level {
-        case 1: return [Color(red: 0.98, green: 0.7, blue: 0.5), Color(red: 0.55, green: 0.75, blue: 0.95)]
-        case 2: return [Color(red: 0.45, green: 0.75, blue: 0.98), Color(red: 0.35, green: 0.6, blue: 0.9)]
-        case 3: return [Color(red: 0.4, green: 0.7, blue: 0.95), Color(red: 0.3, green: 0.55, blue: 0.85)]
-        case 4: return [Color(red: 0.35, green: 0.65, blue: 0.95), Color(red: 0.25, green: 0.5, blue: 0.85)]
-        case 5: return [Color(red: 0.95, green: 0.65, blue: 0.4), Color(red: 0.85, green: 0.45, blue: 0.55)]
-        case 6...7: return [Color(red: 0.3, green: 0.25, blue: 0.55), Color(red: 0.15, green: 0.15, blue: 0.4)]
-        default: return [Color(red: 0.08, green: 0.08, blue: 0.25), Color(red: 0.15, green: 0.1, blue: 0.35)]
+        case 1: return [Color(red:0.98,green:0.7,blue:0.5), Color(red:0.55,green:0.75,blue:0.95)]
+        case 2: return [Color(red:0.45,green:0.75,blue:0.98), Color(red:0.35,green:0.6,blue:0.9)]
+        case 3: return [Color(red:0.4,green:0.7,blue:0.95), Color(red:0.3,green:0.55,blue:0.85)]
+        case 4: return [Color(red:0.35,green:0.65,blue:0.95), Color(red:0.25,green:0.5,blue:0.85)]
+        case 5: return [Color(red:0.95,green:0.65,blue:0.4), Color(red:0.85,green:0.45,blue:0.55)]
+        case 6...7: return [Color(red:0.3,green:0.25,blue:0.55), Color(red:0.15,green:0.15,blue:0.4)]
+        default: return [Color(red:0.08,green:0.08,blue:0.25), Color(red:0.15,green:0.1,blue:0.35)]
         }
     }
 
-    func buildingPosition(col: Int, row: Int, jitterX: CGFloat, jitterY: CGFloat, w: CGFloat, h: CGFloat) -> CGPoint {
-        let groundTop: CGFloat = 0.60
-        let rowHeight: CGFloat = 0.11
-        let cols: CGFloat = 6.0
-        let x = (CGFloat(col) + 1) / cols * w * 0.85 + w * 0.08 + jitterX * w
-        let y = (groundTop + CGFloat(row) * rowHeight + jitterY) * h
-        return CGPoint(x: x, y: y)
+    struct ZoneLayout {
+        let category: ShopCategory; let xRange: ClosedRange<CGFloat>; let yRange: ClosedRange<CGFloat>
     }
+    var zones: [ZoneLayout] {[
+        ZoneLayout(category: .defense, xRange: 0.02...0.98, yRange: 0.55...0.62),
+        ZoneLayout(category: .economy, xRange: 0.05...0.45, yRange: 0.64...0.78),
+        ZoneLayout(category: .housing, xRange: 0.55...0.95, yRange: 0.64...0.78),
+        ZoneLayout(category: .culture, xRange: 0.25...0.75, yRange: 0.78...0.92),
+        ZoneLayout(category: .nature, xRange: 0.10...0.90, yRange: 0.58...0.95),
+    ]}
 
-    func buildingScale(row: Int) -> CGFloat {
-        switch row { case 0: return 0.85; case 1: return 0.95; default: return 1.05 }
+    func zonePosition(zone: ZoneLayout, index: Int, total: Int, w: CGFloat, h: CGFloat, jx: CGFloat, jy: CGFloat) -> CGPoint {
+        let cols = max(1, min(4, total))
+        let col = index % cols; let row = index / cols
+        let xSpan = zone.xRange.upperBound - zone.xRange.lowerBound
+        let ySpan = zone.yRange.upperBound - zone.yRange.lowerBound
+        let cellW = xSpan / CGFloat(cols)
+        let x = (zone.xRange.lowerBound + cellW * (CGFloat(col) + 0.5) + jx) * w
+        let y = (zone.yRange.lowerBound + CGFloat(row) * min(ySpan * 0.5, 0.08) + jy) * h
+        return CGPoint(x: x, y: y)
     }
 
     var body: some View {
@@ -864,79 +903,80 @@ struct KingdomView: View {
                     .animation(.easeInOut(duration: 1.5), value: kingdom.level)
 
                 if kingdom.level >= 6 {
-                    ForEach(0..<12, id: \.self) { i in
-                        SparkleView(x: CGFloat.random(in: 0...w), y: CGFloat.random(in: 0...(h * 0.35)), delay: Double(i) * 0.25)
-                    }
+                    ForEach(0..<8, id: \.self) { i in SparkleView(x: CGFloat.random(in: 0...w), y: CGFloat.random(in: 0...(h*0.35)), delay: Double(i)*0.3) }
                 }
 
                 FloatingCloud(width: 80, height: 30, startX: -80, y: h*0.1, speed: 28, containerWidth: w)
                 FloatingCloud(width: 110, height: 40, startX: -180, y: h*0.18, speed: 38, containerWidth: w)
-                FloatingCloud(width: 65, height: 24, startX: -40, y: h*0.06, speed: 22, containerWidth: w)
 
                 MountainRange()
-                    .fill(LinearGradient(colors: [Color(red: 0.35, green: 0.45, blue: 0.55).opacity(0.5),
-                                                   Color(red: 0.25, green: 0.35, blue: 0.45).opacity(0.3)],
-                                         startPoint: .top, endPoint: .bottom))
-                    .frame(height: h * 0.45).offset(y: h * 0.18)
+                    .fill(LinearGradient(colors: [Color(red:0.35,green:0.45,blue:0.55).opacity(0.5), Color(red:0.25,green:0.35,blue:0.45).opacity(0.3)], startPoint: .top, endPoint: .bottom))
+                    .frame(height: h*0.45).offset(y: h*0.18)
 
                 RollingHills()
-                    .fill(LinearGradient(colors: [Color(red: 0.28, green: 0.65, blue: 0.3), Color(red: 0.18, green: 0.52, blue: 0.22)],
-                                         startPoint: .top, endPoint: .bottom))
-                    .frame(height: h * 0.5).offset(y: h * 0.28)
+                    .fill(LinearGradient(colors: [Color(red:0.28,green:0.65,blue:0.3), Color(red:0.18,green:0.52,blue:0.22)], startPoint: .top, endPoint: .bottom))
+                    .frame(height: h*0.5).offset(y: h*0.28)
 
-                VStack {
-                    Spacer()
-                    Rectangle()
-                        .fill(LinearGradient(colors: [Color(red: 0.2, green: 0.55, blue: 0.2), Color(red: 0.13, green: 0.42, blue: 0.13)],
-                                             startPoint: .top, endPoint: .bottom))
-                        .frame(height: h * 0.35)
+                VStack { Spacer()
+                    Rectangle().fill(LinearGradient(colors: [Color(red:0.2,green:0.55,blue:0.2), Color(red:0.13,green:0.42,blue:0.13)], startPoint: .top, endPoint: .bottom)).frame(height: h*0.42)
                 }
 
-                GrassTextureLine()
-                    .stroke(Color(red: 0.15, green: 0.45, blue: 0.15).opacity(0.3), lineWidth: 1.5)
-                    .frame(height: h * 0.1).offset(y: h * 0.27)
+                ZoneRoadShape().stroke(Color.yellow.opacity(0.25), style: StrokeStyle(lineWidth: 4, dash: [8,6]))
+                    .frame(width: w*0.7, height: h*0.28).position(x: w*0.5, y: h*0.76)
 
-                ForEach(kingdom.buildings.sorted(by: { $0.row < $1.row })) { building in
-                    let pos = buildingPosition(col: building.col, row: building.row, jitterX: building.jitterX, jitterY: building.jitterY, w: w, h: h)
-                    let depthScale = buildingScale(row: building.row)
-
-                    VStack(spacing: 0) {
-                        let isLarge = [BuildingType.castle, .palace, .fortress, .bank, .academy, .university].contains(building.type)
-                        ZStack {
-                            Ellipse()
-                                .fill(Color.black.opacity(0.15))
-                                .frame(width: 40 * depthScale, height: 10 * depthScale)
-                                .offset(y: isLarge ? 28 : 22)
-
-                            Text(building.type.emoji)
-                                .font(.system(size: (isLarge ? 52 : 38) * depthScale))
-                                .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
-                        }
-
-                        Text(building.type.name)
-                            .font(.system(size: max(8, 9 * depthScale), weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Capsule().fill(building.type.category.color.opacity(0.7)))
+                ForEach([ShopCategory.defense, .economy, .housing, .culture], id: \.rawValue) { cat in
+                    let zone = zones.first(where: { $0.category == cat })!
+                    let catBuildings = kingdom.buildingsInZone(cat)
+                    if !catBuildings.isEmpty {
+                        let labelX = (zone.xRange.lowerBound + zone.xRange.upperBound) / 2 * w
+                        let labelY = zone.yRange.lowerBound * h - 6
+                        Text(cat.name).font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(cat.color.opacity(0.5)))
+                            .position(x: labelX, y: labelY)
                     }
-                    .scaleEffect(building.scale)
-                    .position(pos)
+                }
+
+                ForEach(ShopCategory.allCases, id: \.rawValue) { cat in
+                    let zone = zones.first(where: { $0.category == cat })!
+                    let catBuildings = kingdom.buildingsInZone(cat)
+                    ForEach(Array(catBuildings.enumerated()), id: \.element.id) { idx, building in
+                        let pos = zonePosition(zone: zone, index: idx, total: catBuildings.count, w: w, h: h, jx: building.jitterX, jy: building.jitterY)
+                        let isLarge = [BuildingType.castle,.palace,.fortress,.bank,.academy,.university].contains(building.type)
+                        let sz: CGFloat = isLarge ? 44 : 34
+
+                        Button(action: { kingdom.selectedBuilding = building }) {
+                            VStack(spacing: 0) {
+                                ZStack {
+                                    Ellipse().fill(Color.black.opacity(0.12)).frame(width: 32, height: 8).offset(y: sz * 0.45)
+                                    Text(building.type.emoji).font(.system(size: sz))
+                                        .shadow(color: .black.opacity(0.3), radius: 2, y: 2)
+                                }
+                                Text(building.type.name)
+                                    .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
+                                    .padding(.horizontal, 4).padding(.vertical, 1)
+                                    .background(Capsule().fill(cat.color.opacity(0.7)))
+                            }
+                        }
+                        .scaleEffect(building.scale).position(pos)
+                    }
                 }
 
                 if kingdom.buildings.isEmpty {
                     VStack(spacing: 14) {
-                        ZStack {
-                            PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120)
-                            Text("🏗️").font(.system(size: 72))
-                        }
+                        ZStack { PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120); Text("🏗️").font(.system(size: 72)) }
                         Text("Your Kingdom Awaits").font(.system(.title2, design: .rounded)).bold().foregroundColor(.white).shadow(color: .black.opacity(0.3), radius: 4)
-                        Text("Earn coins from tasks → Build in the Shop!").font(.subheadline).foregroundColor(.white.opacity(0.9))
-                    }
-                    .accessibilityLabel("Empty kingdom. Complete tasks to earn coins and build from the shop.")
+                        Text("Earn coins → Buy buildings in the Shop!").font(.subheadline).foregroundColor(.white.opacity(0.9))
+                    }.position(x: w*0.5, y: h*0.72)
                 }
 
                 VStack {
                     HStack {
+                        Text("Tap a building to explore inside")
+                            .font(.system(size: 10, design: .rounded)).foregroundColor(.white.opacity(0.6))
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
                         Spacer()
                         Text(kingdom.kingdomTitle)
                             .font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.white)
@@ -948,9 +988,300 @@ struct KingdomView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(
-                LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
+                LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
             .shadow(color: .black.opacity(0.2), radius: 20, y: 10)
         }
+    }
+}
+
+struct ZoneRoadShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path(); let w = rect.width; let h = rect.height
+        p.move(to: CGPoint(x: w*0.5, y: 0))
+        p.addLine(to: CGPoint(x: w*0.5, y: h))
+        p.move(to: CGPoint(x: 0, y: h*0.4))
+        p.addLine(to: CGPoint(x: w, y: h*0.4))
+        p.move(to: CGPoint(x: w*0.2, y: h*0.1))
+        p.addQuadCurve(to: CGPoint(x: w*0.8, y: h*0.1), control: CGPoint(x: w*0.5, y: h*0.05))
+        return p
+    }
+}
+
+// MARK: - Building Interior (Tap to Enter)
+
+struct BuildingInteriorSheet: View {
+    @EnvironmentObject var kingdom: KingdomState
+    @Binding var building: KingdomBuilding?
+    var b: KingdomBuilding { building! }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    InteriorVisual(type: b.type)
+                    BuildingInfoCard(type: b.type, buildingsOfType: kingdom.buildingsOfType(b.type))
+                    BuildingStatsCard(type: b.type, kingdom: kingdom)
+                    if b.type.category == .culture { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
+                    if b.type.category == .economy { EconomySection(income: kingdom.economyIncome) }
+                    if b.type.category == .defense { DefenseSection(shield: kingdom.streakShield, streak: kingdom.focusStreak) }
+                    RecentActivitySection(history: Array(kingdom.taskHistory.suffix(5).reversed()))
+                }.padding(18)
+            }
+            .background(LinearGradient(colors: [Color(.systemBackground), b.type.category.color.opacity(0.05)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+            .navigationTitle("Inside: \(b.type.name)").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Close") { building = nil } } }
+        }
+    }
+}
+
+struct InteriorVisual: View {
+    let type: BuildingType
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(LinearGradient(colors: [type.category.color.opacity(0.15), type.category.color.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+                .frame(height: 200)
+
+            RoundedRectangle(cornerRadius: 16).stroke(type.category.color.opacity(0.2), lineWidth: 2)
+                .frame(width: 280, height: 170)
+                .overlay(
+                    VStack(spacing: 0) {
+                        Rectangle().fill(interiorWallColor).frame(height: 100)
+                        Rectangle().fill(interiorFloorColor).frame(height: 70)
+                    }.clipShape(RoundedRectangle(cornerRadius: 14)).padding(2)
+                )
+
+            VStack(spacing: 4) {
+                Text(type.emoji).font(.system(size: 70))
+                    .shadow(color: type.category.color.opacity(0.4), radius: 10)
+                Text(type.name).font(.system(.title3, design: .rounded)).bold().foregroundColor(.primary)
+            }
+        }
+    }
+    var interiorWallColor: Color {
+        switch type.category {
+        case .housing: return Color(red: 0.95, green: 0.92, blue: 0.85)
+        case .economy: return Color(red: 0.95, green: 0.93, blue: 0.8)
+        case .culture: return Color(red: 0.9, green: 0.88, blue: 0.95)
+        case .defense: return Color(red: 0.88, green: 0.88, blue: 0.9)
+        case .nature: return Color(red: 0.85, green: 0.95, blue: 0.85)
+        }
+    }
+    var interiorFloorColor: Color {
+        switch type.category {
+        case .housing: return Color(red: 0.7, green: 0.55, blue: 0.4)
+        case .economy: return Color(red: 0.85, green: 0.8, blue: 0.7)
+        case .culture: return Color(red: 0.6, green: 0.5, blue: 0.65)
+        case .defense: return Color(red: 0.6, green: 0.6, blue: 0.65)
+        case .nature: return Color(red: 0.4, green: 0.7, blue: 0.4)
+        }
+    }
+}
+
+struct BuildingInfoCard: View {
+    let type: BuildingType; let buildingsOfType: Int
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: type.category.icon).foregroundColor(type.category.color)
+                Text(type.category.name + " District").font(.system(.headline, design: .rounded))
+                Spacer()
+                Text("Owned: \(buildingsOfType)").font(.subheadline).foregroundColor(.secondary)
+            }
+            Divider()
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Benefit").font(.caption).foregroundColor(.secondary)
+                    Text(type.benefit).font(.system(.body, design: .rounded)).bold().foregroundColor(type.category.color)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Value").font(.caption).foregroundColor(.secondary)
+                    Text("💰 \(type.cost) coins").font(.system(.body, design: .rounded)).foregroundColor(.orange)
+                }
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct BuildingStatsCard: View {
+    let type: BuildingType; let kingdom: KingdomState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Kingdom Impact").font(.system(.headline, design: .rounded))
+            HStack(spacing: 0) {
+                StatPill(emoji: "👥", label: "Pop", value: kingdom.population, color: .blue)
+                StatPill(emoji: "💵", label: "Income", value: kingdom.economyIncome, color: .green)
+                StatPill(emoji: "📖", label: "XP+", value: kingdom.xpBoostPercent, color: .purple)
+                StatPill(emoji: "🛡️", label: "Shield", value: kingdom.streakShield, color: .red)
+                StatPill(emoji: "🌸", label: "Beauty", value: kingdom.beautyScore, color: .pink)
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct StatPill: View {
+    let emoji: String; let label: String; let value: Int; let color: Color
+    var body: some View {
+        VStack(spacing: 2) { Text(emoji).font(.system(size: 14)); Text("\(value)").font(.system(size: 13, weight: .bold, design: .rounded)).foregroundColor(color); Text(label).font(.system(size: 8)).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
+    }
+}
+
+struct KnowledgeSection: View {
+    let knowledge: [KnowledgeEntry]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Image(systemName: "brain.head.profile").foregroundColor(.purple); Text("Knowledge Map").font(.system(.headline, design: .rounded)); Spacer() }
+            if knowledge.isEmpty {
+                Text("Complete tasks to build your knowledge library").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
+            } else {
+                ForEach(knowledge.prefix(6)) { k in
+                    HStack(spacing: 12) {
+                        Circle().fill(k.masteryColor).frame(width: 10, height: 10)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(k.topic).font(.system(.subheadline, design: .rounded)).bold()
+                            Text("\(k.masteryLabel) · \(k.tasksCompleted) sessions").font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text("Lv.\(k.masteryLevel)").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(k.masteryColor)
+                            .padding(.horizontal, 8).padding(.vertical, 3).background(k.masteryColor.opacity(0.12)).clipShape(Capsule())
+                    }
+                }
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct EconomySection: View {
+    let income: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Image(systemName: "chart.line.uptrend.xyaxis").foregroundColor(.green); Text("Economy Report").font(.system(.headline, design: .rounded)); Spacer() }
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Income per collect").font(.caption).foregroundColor(.secondary)
+                    Text("+\(income) coins").font(.system(.title3, design: .rounded)).bold().foregroundColor(.green)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Status").font(.caption).foregroundColor(.secondary)
+                    Text(income > 20 ? "Thriving" : income > 10 ? "Growing" : income > 0 ? "Starting" : "No shops yet")
+                        .font(.subheadline).bold().foregroundColor(income > 10 ? .green : .orange)
+                }
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct DefenseSection: View {
+    let shield: Int; let streak: Int
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Image(systemName: "shield.checkered").foregroundColor(.red); Text("Defense Report").font(.system(.headline, design: .rounded)); Spacer() }
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Streak Shield Level").font(.caption).foregroundColor(.secondary)
+                    Text("\(shield)").font(.system(.title3, design: .rounded)).bold().foregroundColor(.red)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Current Streak").font(.caption).foregroundColor(.secondary)
+                    HStack(spacing: 4) { Text("🔥"); Text("\(streak)").font(.system(.title3, design: .rounded)).bold().foregroundColor(.orange) }
+                }
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct RecentActivitySection: View {
+    let history: [TaskHistoryEntry]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Image(systemName: "clock.arrow.circlepath").foregroundColor(.blue); Text("Recent Activity").font(.system(.headline, design: .rounded)); Spacer() }
+            if history.isEmpty {
+                Text("No completed tasks yet").font(.subheadline).foregroundColor(.secondary)
+            } else {
+                ForEach(history.prefix(5)) { entry in
+                    HStack(spacing: 10) {
+                        Circle().fill(entry.wasGroupComplete ? Color.green : Color.blue).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.title).font(.system(.caption, design: .rounded)).foregroundColor(.primary).lineLimit(1)
+                            Text(entry.completedAt, style: .relative).font(.system(size: 10)).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text("+\(entry.coinsEarned)💰").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundColor(.orange)
+                    }
+                }
+            }
+        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+// MARK: - Activity & Knowledge Hub
+
+struct ActivityHubSheet: View {
+    @EnvironmentObject var kingdom: KingdomState; @Binding var show: Bool
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    ActivitySummaryCard(total: kingdom.taskHistory.count, today: kingdom.todayTaskCount,
+                                        coins: kingdom.totalCoinsEarned, streak: kingdom.focusStreak)
+                    if !kingdom.knowledgeMap.isEmpty { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("All Completed Tasks").font(.system(.headline, design: .rounded))
+                        if kingdom.taskHistory.isEmpty {
+                            Text("Complete focus sessions to build your history").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 16)
+                        } else {
+                            ForEach(kingdom.taskHistory.reversed()) { entry in
+                                HStack(spacing: 12) {
+                                    VStack(spacing: 2) {
+                                        Text(entry.wasGroupComplete ? "⭐" : "✅").font(.system(size: 20))
+                                    }.frame(width: 32)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(entry.title).font(.system(.subheadline, design: .rounded)).foregroundColor(.primary)
+                                        HStack(spacing: 8) {
+                                            Text(entry.topic).font(.caption).foregroundColor(.purple)
+                                            Text("·").foregroundColor(.secondary)
+                                            Text(entry.completedAt, style: .relative).font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text("+\(entry.coinsEarned)").font(.system(.caption, design: .rounded)).bold().foregroundColor(.orange)
+                                }.padding(.vertical, 6)
+                                Divider()
+                            }
+                        }
+                    }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+                }.padding(18)
+            }
+            .background(LinearGradient(colors: [Color(.systemBackground), Color.blue.opacity(0.03)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+            .navigationTitle("Activity Hub").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { show = false } } }
+        }
+    }
+}
+
+struct ActivitySummaryCard: View {
+    let total: Int; let today: Int; let coins: Int; let streak: Int
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("📊").font(.system(size: 48))
+            HStack(spacing: 0) {
+                VStack(spacing: 4) { Text("\(total)").font(.system(.title2, design: .rounded)).bold(); Text("Total").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
+                VStack(spacing: 4) { Text("\(today)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.green); Text("Today").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
+                VStack(spacing: 4) { Text("\(coins)💰").font(.system(.title2, design: .rounded)).bold().foregroundColor(.orange); Text("Earned").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
+                VStack(spacing: 4) { Text("🔥\(streak)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.red); Text("Streak").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
+            }
+        }.padding(20).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -1065,8 +1396,9 @@ struct EmptyTasksView: View {
 }
 
 struct TaskRowView: View {
+    @EnvironmentObject var kingdom: KingdomState
     let task: TaskPiece; let index: Int; let onFocus: () -> Void
-    @State private var appeared = false
+    @State private var appeared = false; @State private var isEditing = false; @State private var editText = ""
     let grads: [[Color]] = [[.blue,.cyan],[.purple,.pink],[.pink,.orange],[.orange,.yellow],[.green,.mint],[.cyan,.blue],[.indigo,.purple],[.mint,.green]]
     var g: [Color] { grads[abs(task.title.hashValue) % grads.count] }
     var body: some View {
@@ -1083,11 +1415,15 @@ struct TaskRowView: View {
                 }.foregroundColor(.secondary)
             }
             Spacer()
+            Button(action: { editText = task.title; isEditing = true }) {
+                Image(systemName: "pencil").font(.system(size: 14)).foregroundColor(.secondary)
+                    .padding(8).background(Circle().fill(Color.gray.opacity(0.1)))
+            }
             Button(action: onFocus) {
                 HStack(spacing: 5) {
                     Image(systemName: "play.fill").font(.system(size: 10))
                     Text("Focus").font(.system(.subheadline, design: .rounded)).bold()
-                }.foregroundColor(.white).padding(.horizontal, 18).padding(.vertical, 10)
+                }.foregroundColor(.white).padding(.horizontal, 16).padding(.vertical, 10)
                 .background(LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .top, endPoint: .bottom))
                 .clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: .green.opacity(0.3), radius: 6, y: 3)
             }
@@ -1096,6 +1432,11 @@ struct TaskRowView: View {
         .shadow(color: .black.opacity(0.06), radius: 10, y: 5)
         .scaleEffect(appeared ? 1 : 0.95).opacity(appeared ? 1 : 0)
         .onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.06)) { appeared = true } }
+        .alert("Rename Task", isPresented: $isEditing) {
+            TextField("Task name", text: $editText)
+            Button("Save") { if !editText.isEmpty { kingdom.renameTask(id: task.id, newTitle: editText) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Edit the task name to match what you want to focus on.") }
     }
 }
 
@@ -1184,8 +1525,8 @@ struct TaskInputSheet: View {
         }
     }
     func addAllTasks() {
-        let g = UUID()
-        kingdom.addTasks(breakdown.map { TaskPiece(title: $0, minutes: 25, groupID: g) }, groupID: g); show = false
+        let g = UUID(); let topic = TaskAI.extractTopic(from: taskInput)
+        kingdom.addTasks(breakdown.map { TaskPiece(title: $0, minutes: 25, groupID: g) }, groupID: g, topic: topic); show = false
     }
 }
 
@@ -1462,6 +1803,7 @@ struct QuizSheet: View {
     @EnvironmentObject var kingdom: KingdomState; @Binding var show: Bool; let groupID: UUID
     @State private var understanding = 3; @State private var keyLearning = ""; @State private var confidence = 3; @State private var showResults = false
     var groupTasks: [TaskPiece] { kingdom.tasks.filter { $0.groupID == groupID } }
+    var topicName: String { kingdom.groupTopics[groupID] ?? "this topic" }
     var body: some View {
         NavigationView {
             ZStack {
@@ -1470,10 +1812,10 @@ struct QuizSheet: View {
                 else {
                     ScrollView {
                         VStack(spacing: 22) {
-                            QuizHeader(taskCount: groupTasks.count)
-                            QuizQuestion(title: "How well do you understand this topic?", value: $understanding, lowLabel: "Just started", highLabel: "Expert level")
+                            QuizHeader(taskCount: groupTasks.count, topic: topicName)
+                            QuizQuestion(title: "How well do you understand \(topicName)?", value: $understanding, lowLabel: "Just started", highLabel: "Expert level")
                             KeyLearningInput(text: $keyLearning)
-                            QuizQuestion(title: "Could you teach this to someone else?", value: $confidence, lowLabel: "Not yet", highLabel: "Absolutely")
+                            QuizQuestion(title: "Could you teach \(topicName) to someone else?", value: $confidence, lowLabel: "Not yet", highLabel: "Absolutely")
                             SubmitQuizButton(isEnabled: !keyLearning.isEmpty, action: submitQuiz)
                         }.padding(20)
                     }
@@ -1484,18 +1826,27 @@ struct QuizSheet: View {
     }
     func calculateReward() -> Int { groupTasks.count * 50 + (understanding + confidence) * 10 }
     func submitQuiz() {
-        kingdom.coins += calculateReward(); kingdom.completedGroups.insert(groupID)
+        let reward = calculateReward()
+        kingdom.coins += reward; kingdom.completedGroups.insert(groupID)
         kingdom.showShopHint = true
+        let topic = kingdom.groupTopics[groupID] ?? TaskAI.extractTopic(from: groupTasks.first?.title ?? "")
+        if let i = kingdom.knowledgeMap.firstIndex(where: { $0.topic.lowercased() == topic.lowercased() }) {
+            kingdom.knowledgeMap[i].quizScore = (understanding + confidence) * 10
+            if understanding >= 4 && kingdom.knowledgeMap[i].masteryLevel < 4 { kingdom.knowledgeMap[i].masteryLevel += 1 }
+        } else {
+            kingdom.knowledgeMap.append(KnowledgeEntry(topic: topic.capitalized, tasksCompleted: groupTasks.count, quizScore: (understanding + confidence) * 10, masteryLevel: understanding >= 4 ? 2 : 1))
+        }
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
     }
 }
 
 struct QuizHeader: View {
-    let taskCount: Int
+    let taskCount: Int; let topic: String
     var body: some View {
         VStack(spacing: 16) {
             ZStack { Circle().fill(RadialGradient(colors: [.yellow.opacity(0.2), .clear], center: .center, startRadius: 0, endRadius: 60)).frame(width: 120, height: 120); Text("🎓").font(.system(size: 64)) }
             Text("Reflect on Your Learning").font(.system(.title2, design: .rounded)).bold().foregroundColor(.primary)
+            Text("Topic: \(topic)").font(.system(.headline, design: .rounded)).foregroundColor(.purple)
             Text("You completed \(taskCount) focus sessions").font(.subheadline).foregroundColor(.secondary)
         }.padding(.top, 10)
     }
@@ -1820,9 +2171,9 @@ struct OnboardingOverlay: View {
                     Text("Turn overwhelming tasks into focused sessions.\nEach session builds your kingdom.").font(.system(.body, design: .rounded)).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
                     VStack(alignment: .leading, spacing: 14) {
                         OnboardingStep(icon: "brain.head.profile", color: .purple, text: "AI breaks any task into focused pieces")
-                        OnboardingStep(icon: "dollarsign.circle.fill", color: .orange, text: "Earn 10 coins per session, bonuses for groups")
-                        OnboardingStep(icon: "storefront.fill", color: .green, text: "Build YOUR kingdom — choose from the shop")
-                        OnboardingStep(icon: "shield.checkered", color: .cyan, text: "Focus Shield protects your streak")
+                        OnboardingStep(icon: "dollarsign.circle.fill", color: .orange, text: "Earn coins, buy buildings, build your kingdom")
+                        OnboardingStep(icon: "building.2.fill", color: .green, text: "Tap buildings to explore inside & see stats")
+                        OnboardingStep(icon: "chart.bar.xaxis", color: .blue, text: "Track knowledge, quiz yourself, master topics")
                     }.padding(.horizontal, 30)
                 }
                 Spacer()
@@ -1856,7 +2207,8 @@ struct ContentView: View {
     @EnvironmentObject var kingdom: KingdomState
     @State private var showTaskInput = false; @State private var showTimer = false
     @State private var showQuiz = false; @State private var showShop = false
-    @State private var showOnboarding = true; @State private var selectedTask: TaskPiece?; @State private var quizGroupID: UUID?
+    @State private var showActivity = false; @State private var showOnboarding = true
+    @State private var selectedTask: TaskPiece?; @State private var quizGroupID: UUID?
 
     var hasQuizAvailable: Bool {
         kingdom.tasks.contains { t in
@@ -1865,22 +2217,34 @@ struct ContentView: View {
         }
     }
 
+    var showBuildingInterior: Binding<Bool> {
+        Binding(get: { kingdom.selectedBuilding != nil }, set: { if !$0 { kingdom.selectedBuilding = nil } })
+    }
+
     var body: some View {
         GeometryReader { geometry in
             NavigationView {
                 ZStack {
-                    LinearGradient(colors: [Color(red: 0.95, green: 0.95, blue: 0.98), Color(red: 0.92, green: 0.91, blue: 0.97)],
+                    LinearGradient(colors: [Color(red:0.95,green:0.95,blue:0.98), Color(red:0.92,green:0.91,blue:0.97)],
                                    startPoint: .top, endPoint: .bottom).ignoresSafeArea()
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 20) {
                             HeaderStats()
                             LevelProgressBar()
-                            KingdomView().frame(height: max(380, geometry.size.height * 0.45))
+                            KingdomView().frame(height: max(400, geometry.size.height * 0.48))
                             if hasQuizAvailable {
                                 QuizAvailableBanner { if let g = getFirstUnquizzedGroup() { quizGroupID = g; showQuiz = true } }
                             }
                             ActiveTasksList(selectedTask: $selectedTask, showTimer: $showTimer)
                             ActionButtons(showTaskInput: $showTaskInput, showShop: $showShop)
+                            Button(action: { showActivity = true }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "chart.bar.xaxis").font(.title3)
+                                    Text("Activity & Knowledge Hub").font(.system(.headline, design: .rounded))
+                                }.foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
+                                .background(LinearGradient(colors: [.blue, .cyan], startPoint: .leading, endPoint: .trailing))
+                                .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .blue.opacity(0.3), radius: 12, y: 6)
+                            }
                             Spacer().frame(height: 30)
                         }.padding(.horizontal, 18).padding(.top, 10)
                     }
@@ -1901,6 +2265,12 @@ struct ContentView: View {
                 .sheet(isPresented: $showTimer) { if let t = selectedTask { FocusTimerSheet(show: $showTimer, task: t, duration: kingdom.focusDuration) } }
                 .sheet(isPresented: $showQuiz) { if let g = quizGroupID { QuizSheet(show: $showQuiz, groupID: g) } }
                 .sheet(isPresented: $showShop) { KingdomShopView(show: $showShop) }
+                .sheet(isPresented: $showActivity) { ActivityHubSheet(show: $showActivity) }
+                .sheet(isPresented: showBuildingInterior) {
+                    if kingdom.selectedBuilding != nil {
+                        BuildingInteriorSheet(building: $kingdom.selectedBuilding)
+                    }
+                }
             }.navigationViewStyle(.stack)
         }
     }
