@@ -34,8 +34,15 @@ Students type any task — "study for biology exam", "learn statistics", "practi
 - Knowledge Map viewable inside Culture buildings and the Activity Hub
 - Topics carry across sessions — the app remembers what you've learned
 
+### Audio Accessibility (Text-to-Speech + Sound Cues)
+- **AVSpeechSynthesizer** reads all key content aloud for visually impaired users
+- Announces: AI task breakdowns, timer countdowns (30s, 10s, 0s), task completions with coin rewards, building purchases with zone info, quiz results, and level-ups
+- **SystemSoundID** audio cues: distinct sounds for coins, completions, building placement, and level progression
+- Dedicated **Accessibility Settings panel** with toggles for speech and sound, test buttons for each sound, and a full voice preview
+- Designed for blind and visually impaired users — every screen event has an audio equivalent
+
 ### Swift Charts Visualizations
-- **7-Day Activity Bar Chart**: color-graded bars showing daily task completions with annotations
+- **7-Day Activity Bar Chart**: gradient-filled bars showing daily task completions with annotations
 - **Knowledge Mastery Chart**: horizontal bar chart mapping every studied topic to its mastery level
 - Built with Apple's native `Charts` framework for polished, accessible data visualization
 
@@ -45,9 +52,11 @@ Students type any task — "study for biology exam", "learn statistics", "practi
 
 ### Full Accessibility
 - **VoiceOver**: every interactive element has `accessibilityLabel` and `accessibilityHint`
-- **Reduce Motion**: confetti, floating clouds, and sparkle animations are suppressed when the system Reduce Motion setting is on
+- **Text-to-Speech**: full `AVSpeechSynthesizer` integration with voice controls
+- **Sound Cues**: `AudioToolbox` system sounds for key interactions
+- **Reduce Motion**: confetti, floating clouds, and sparkle animations suppressed when system Reduce Motion is on
 - **Dynamic Type**: stat cards, task rows, and navigation use system font scaling
-- Combined accessibility elements on stat cards, task rows, building cards, and the activity summary for streamlined VoiceOver navigation
+- Combined accessibility elements for streamlined VoiceOver navigation
 
 ### Focus Shield (Anti-Distraction Visual)
 - Animated shield visualization during focus sessions
@@ -70,6 +79,8 @@ Settlement → Hamlet → Village → Town → Borough → City → Metropolis �
 
 - **SwiftUI** — entire UI, animations, and state management
 - **Swift Charts** — native data visualizations for activity and mastery tracking
+- **AVFoundation** — `AVSpeechSynthesizer` for text-to-speech accessibility
+- **AudioToolbox** — `SystemSoundID` for interaction sound cues
 - **UIKit Haptics** — tactile feedback across all key interactions
 - **No external dependencies** — runs fully offline
 - **No assets required** — all visuals use SF Symbols, emojis, and SwiftUI shapes/gradients
@@ -99,7 +110,15 @@ Settlement → Hamlet → Village → Town → Borough → City → Metropolis �
 ```
 KingdomBuilder.swift
 ├── App Entry Point (FocusFlowApp)
-├── Haptics Engine (UIKit feedback integration)
+├── Haptics Engine (UIKit tactile feedback)
+├── Audio Accessibility Engine (AccessibilityAudio)
+│   ├── AVSpeechSynthesizer (text-to-speech)
+│   ├── AudioToolbox SystemSoundID (audio cues)
+│   └── Context-aware announcements (timer, tasks, buildings, quizzes)
+├── Accessibility Settings View
+│   ├── Speech toggle + voice test
+│   ├── Sound cue toggles + individual sound tests
+│   └── Feature explanation list
 ├── Data Models
 │   ├── TaskPiece, KingdomBuilding, BuildingType
 │   ├── ShopCategory (Housing/Economy/Culture/Defense/Nature)
@@ -124,12 +143,12 @@ KingdomBuilder.swift
 │   ├── Animations (Confetti, Clouds, Sparkles, Shield)
 │   └── Focus Shield (Anti-Distraction)
 ├── Kingdom View (Zoned District Layout + Reduce Motion)
-├── Building Interior View (Tap-to-Enter)
+├── Building Interior View (Tap-to-Enter + Audio Announce)
 ├── Activity & Knowledge Hub (Charts + History)
-├── Kingdom Shop (5-Category Store + Haptics)
-├── Focus Timer with Shield + Haptics
-├── Quiz System with Knowledge Memory
-├── Accessibility (VoiceOver, Reduce Motion, Dynamic Type)
+├── Kingdom Shop (5-Category Store + Haptics + Audio)
+├── Focus Timer with Shield + Haptics + Voice Countdown
+├── Quiz System with Knowledge Memory + Audio Results
+├── Accessibility (VoiceOver, Reduce Motion, Dynamic Type, Speech, Sound)
 └── Onboarding
 ```
 
@@ -143,14 +162,23 @@ KingdomBuilder.swift
 | Pomodoro apps: just a timer | Timer earns coins for an **interactive economy** |
 | Habitica: generic RPG quests | Buildings have **real game mechanics** (income, XP boost, streak protection) |
 | Most apps: no data viz | **Swift Charts** show your 7-day activity and mastery progress |
-| Most apps: basic accessibility | **Full VoiceOver, Reduce Motion, Dynamic Type** support |
+| Most apps: basic accessibility | **Full VoiceOver, Text-to-Speech, Sound Cues, Reduce Motion** |
+| No focus apps read content aloud | **AVSpeechSynthesizer** announces everything for blind users |
+
+## Accessibility Philosophy
+
+Kingdom Builder was designed from the ground up to be usable by everyone:
+- **Blind users**: AVSpeechSynthesizer reads every task breakdown, timer countdown, building detail, coin reward, and level-up aloud. VoiceOver labels and hints on every interactive element.
+- **Low-vision users**: Dynamic Type support, high-contrast gradients, and combined accessibility elements.
+- **Motion-sensitive users**: All decorative animations (confetti, clouds, sparkles) respect the system Reduce Motion setting.
+- **Users who benefit from audio feedback**: Distinct system sounds for coins, task completion, building, and leveling up provide non-visual confirmation.
 
 ## Screenshots
 
 *Three screenshots should be provided showing:*
 1. The main kingdom view with zoned districts and buildings
 2. The AI task breakdown with personalized steps
-3. The Activity Hub with Swift Charts visualizations
+3. The Accessibility Settings panel with speech and sound controls
 
 ## Author
 

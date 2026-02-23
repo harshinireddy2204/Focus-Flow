@@ -1,5 +1,7 @@
 import SwiftUI
 import Charts
+import AVFoundation
+import AudioToolbox
 
 @main
 struct FocusFlowApp: App {
@@ -12,6 +14,8 @@ struct FocusFlowApp: App {
     }
 }
 
+// MARK: - Haptic Feedback Engine
+
 enum Haptics {
     static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
         UIImpactFeedbackGenerator(style: style).impactOccurred()
@@ -20,6 +24,200 @@ enum Haptics {
         UINotificationFeedbackGenerator().notificationOccurred(type)
     }
     static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+}
+
+// MARK: - Audio Accessibility Engine (Text-to-Speech + Sound Cues)
+
+class AccessibilityAudio: ObservableObject {
+    static let shared = AccessibilityAudio()
+
+    @Published var speechEnabled: Bool = false
+    @Published var soundCuesEnabled: Bool = true
+
+    private let synthesizer = AVSpeechSynthesizer()
+
+    func speak(_ text: String, priority: Bool = false) {
+        guard speechEnabled else { return }
+        if priority { synthesizer.stopSpeaking(at: .word) }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
+        utterance.pitchMultiplier = 1.05
+        utterance.volume = 0.9
+        synthesizer.speak(utterance)
+    }
+
+    func stopSpeaking() { synthesizer.stopSpeaking(at: .immediate) }
+
+    func playSound(_ soundID: SystemSoundID) {
+        guard soundCuesEnabled else { return }
+        AudioServicesPlaySystemSound(soundID)
+    }
+
+    func coinSound() { playSound(1057) }
+    func successSound() { playSound(1025) }
+    func buildSound() { playSound(1104) }
+    func levelUpSound() { playSound(1335) }
+    func timerDoneSound() { playSound(1005) }
+    func tapSound() { playSound(1104) }
+
+    func announceTaskCompletion(task: String, coins: Int, bonus: Int) {
+        var msg = "Task complete! \(task). You earned \(coins) coins."
+        if bonus > 0 { msg += " Bonus! All tasks done. Plus \(bonus) extra coins!" }
+        speak(msg, priority: true)
+        successSound()
+    }
+
+    func announceTimerUpdate(seconds: Int) {
+        if seconds == 30 { speak("30 seconds remaining. Almost there!") }
+        else if seconds == 10 { speak("10 seconds. Final push!") }
+        else if seconds == 0 { speak("Time is up! Session complete.", priority: true); timerDoneSound() }
+    }
+
+    func announceBreakdown(topic: String, count: Int) {
+        speak("Analysis complete. \(count) personalized tasks created for \(topic).", priority: true)
+    }
+
+    func announceBuildingPurchase(name: String) {
+        speak("Built a \(name) in your kingdom!", priority: true)
+        buildSound()
+    }
+
+    func announceLevelUp(level: Int, title: String) {
+        speak("Level up! You are now level \(level), a \(title)!", priority: true)
+        levelUpSound()
+    }
+
+    func announceBuilding(building: String, category: String, benefit: String) {
+        speak("\(building) in the \(category) zone. \(benefit).")
+    }
+
+    func announceQuizResult(score: Int, coins: Int) {
+        speak("Quiz complete! You scored \(score) out of 10 and earned \(coins) coins.", priority: true)
+    }
+}
+
+// MARK: - Accessibility Settings View
+
+struct AccessibilitySettingsView: View {
+    @ObservedObject var audio = AccessibilityAudio.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section {
+                    VStack(spacing: 12) {
+                        Image(systemName: "ear.badge.waveform")
+                            .font(.system(size: 48))
+                            .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom))
+                        Text("Audio Accessibility")
+                            .font(.system(.title2, design: .rounded)).bold()
+                        Text("These features help users who are visually impaired or benefit from audio feedback.")
+                            .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .listRowBackground(Color.clear)
+                }
+
+                Section("Voice") {
+                    Toggle(isOn: $audio.speechEnabled) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Text-to-Speech").font(.system(.body, design: .rounded)).bold()
+                                Text("Reads task breakdowns, timer updates, building info, and rewards aloud")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        } icon: { Image(systemName: "speaker.wave.3.fill").foregroundColor(.blue) }
+                    }
+                    .accessibilityLabel("Text to speech")
+                    .accessibilityHint("When enabled, the app reads important information aloud")
+
+                    if audio.speechEnabled {
+                        Button {
+                            audio.speak("Hello! I'm your Kingdom Builder assistant. I'll announce task completions, timer updates, and building information to help you stay focused.", priority: true)
+                        } label: {
+                            Label("Test Voice", systemImage: "play.circle.fill")
+                                .font(.system(.body, design: .rounded))
+                                .foregroundColor(.purple)
+                        }
+                        .accessibilityLabel("Test text to speech voice")
+                    }
+                }
+
+                Section("Sound Effects") {
+                    Toggle(isOn: $audio.soundCuesEnabled) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Sound Cues").font(.system(.body, design: .rounded)).bold()
+                                Text("Plays distinct sounds for coins, completions, building, and level-ups")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        } icon: { Image(systemName: "bell.badge.waveform.fill").foregroundColor(.orange) }
+                    }
+                    .accessibilityLabel("Sound cues")
+                    .accessibilityHint("When enabled, the app plays sounds for key interactions")
+
+                    if audio.soundCuesEnabled {
+                        HStack(spacing: 12) {
+                            SoundTestButton(label: "Coin", icon: "dollarsign.circle") { audio.coinSound() }
+                            SoundTestButton(label: "Done", icon: "checkmark.circle") { audio.successSound() }
+                            SoundTestButton(label: "Build", icon: "building.2") { audio.buildSound() }
+                            SoundTestButton(label: "Level", icon: "arrow.up.circle") { audio.levelUpSound() }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+
+                Section("What Gets Announced") {
+                    AudioFeatureRow(icon: "brain.head.profile", color: .purple, title: "AI Task Breakdown",
+                                    detail: "Reads the topic and number of tasks created")
+                    AudioFeatureRow(icon: "timer", color: .cyan, title: "Focus Timer",
+                                    detail: "Announces 30s, 10s remaining, and session complete")
+                    AudioFeatureRow(icon: "dollarsign.circle.fill", color: .orange, title: "Rewards",
+                                    detail: "Announces coins earned and group bonuses")
+                    AudioFeatureRow(icon: "building.2.fill", color: .green, title: "Buildings",
+                                    detail: "Reads building name, zone, and benefits when purchased or tapped")
+                    AudioFeatureRow(icon: "graduationcap.fill", color: .yellow, title: "Quizzes",
+                                    detail: "Announces quiz scores and coin rewards")
+                    AudioFeatureRow(icon: "arrow.up.circle.fill", color: .blue, title: "Level Ups",
+                                    detail: "Announces new level and kingdom title")
+                }
+            }
+            .navigationTitle("Accessibility").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+struct SoundTestButton: View {
+    let label: String; let icon: String; let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.title3).foregroundColor(.blue)
+                Text(label).font(.system(size: 10, weight: .medium, design: .rounded)).foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(Color.blue.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityLabel("Test \(label) sound")
+    }
+}
+
+struct AudioFeatureRow: View {
+    let icon: String; let color: Color; let title: String; let detail: String
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundColor(color).frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(.subheadline, design: .rounded)).bold()
+                Text(detail).font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 // MARK: - Data Models
@@ -292,7 +490,11 @@ class KingdomState: ObservableObject {
 
         showCelebration = true; showShopHint = true
         Haptics.notify(.success)
-        if level > oldLevel { previousLevel = oldLevel; showLevelUp = true; Haptics.notify(.warning) }
+        AccessibilityAudio.shared.announceTaskCompletion(task: task.title, coins: lastCoinsEarned, bonus: lastGroupBonus)
+        if level > oldLevel {
+            previousLevel = oldLevel; showLevelUp = true; Haptics.notify(.warning)
+            AccessibilityAudio.shared.announceLevelUp(level: level, title: kingdomTitle)
+        }
     }
 
     func updateKnowledge(topic: String, wasGroupComplete: Bool) {
@@ -318,6 +520,7 @@ class KingdomState: ObservableObject {
     func purchaseBuilding(type: BuildingType) {
         guard coins >= type.cost else { return }
         Haptics.impact(.heavy)
+        AccessibilityAudio.shared.announceBuildingPurchase(name: type.name)
         coins -= type.cost; buildingCount += 1
         let zoneBuildings = buildingsInZone(type.category)
         let idx = zoneBuildings.count
@@ -330,7 +533,13 @@ class KingdomState: ObservableObject {
         }
     }
 
-    func collectEconomyIncome() { guard economyIncome > 0 else { return }; Haptics.impact(.light); coins += economyIncome }
+    func collectEconomyIncome() {
+        guard economyIncome > 0 else { return }
+        Haptics.impact(.light)
+        AccessibilityAudio.shared.coinSound()
+        AccessibilityAudio.shared.speak("Collected \(economyIncome) coins from your economy buildings.")
+        coins += economyIncome
+    }
     func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
     func buildingsOfType(_ type: BuildingType) -> Int { buildings.filter { $0.type == type }.count }
 
@@ -1087,6 +1296,9 @@ struct BuildingInteriorSheet: View {
             .background(LinearGradient(colors: [Color(.systemBackground), building.type.category.color.opacity(0.05)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
             .navigationTitle("Inside: \(building.type.name)").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Close") { dismiss() } } }
+            .onAppear {
+                AccessibilityAudio.shared.announceBuilding(building: building.type.name, category: building.type.category.name, benefit: building.type.benefit)
+            }
         }
     }
 }
@@ -1702,12 +1914,17 @@ struct TaskInputSheet: View {
         }
     }
     func analyzeTask() {
+        AccessibilityAudio.shared.speak("Analyzing your task. Please wait.")
         isAnalyzing = true; analysisProgress = 0
         for i in 1...20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.07) {
                 withAnimation { analysisProgress = Double(i) / 20.0 }
-                if i == 20 { breakdown = TaskAI.breakdownTask(taskInput); isAnalyzing = false
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true } }
+                if i == 20 {
+                    breakdown = TaskAI.breakdownTask(taskInput); isAnalyzing = false
+                    let topic = TaskAI.extractTopic(from: taskInput)
+                    AccessibilityAudio.shared.announceBreakdown(topic: topic, count: breakdown.count)
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
+                }
             }
         }
     }
@@ -1855,11 +2072,18 @@ struct FocusTimerSheet: View {
         Haptics.selection()
         isRunning.toggle()
         if isRunning {
+            AccessibilityAudio.shared.speak("Focus timer started for \(task.title). Stay focused!", priority: true)
             withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breatheScale = 1.08 }
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                if timeLeft > 0 { timeLeft -= 1 } else { completeSession() }
+                if timeLeft > 0 {
+                    timeLeft -= 1
+                    AccessibilityAudio.shared.announceTimerUpdate(seconds: timeLeft)
+                } else { completeSession() }
             }
-        } else { withAnimation { breatheScale = 1.0 }; timer?.invalidate() }
+        } else {
+            AccessibilityAudio.shared.speak("Timer paused.")
+            withAnimation { breatheScale = 1.0 }; timer?.invalidate()
+        }
     }
     func resetTimer() { timer?.invalidate(); timeLeft = totalDuration; isRunning = false; withAnimation { breatheScale = 1.0 } }
     func completeSession() { timer?.invalidate(); isRunning = false; kingdom.completeTask(task)
@@ -2019,6 +2243,7 @@ struct QuizSheet: View {
     func submitQuiz() {
         Haptics.notify(.success)
         let reward = calculateReward()
+        AccessibilityAudio.shared.announceQuizResult(score: understanding + confidence, coins: reward)
         kingdom.coins += reward; kingdom.completedGroups.insert(groupID)
         kingdom.showShopHint = true
         let topic = kingdom.groupTopics[groupID] ?? TaskAI.extractTopic(from: groupTasks.first?.title ?? "")
@@ -2370,6 +2595,7 @@ struct OnboardingOverlay: View {
                         OnboardingStep(icon: "dollarsign.circle.fill", color: .orange, text: "Earn coins, buy buildings, build your kingdom")
                         OnboardingStep(icon: "building.2.fill", color: .green, text: "Tap buildings to explore inside & see stats")
                         OnboardingStep(icon: "chart.bar.xaxis", color: .blue, text: "Track knowledge, quiz yourself, master topics")
+                        OnboardingStep(icon: "ear.badge.waveform", color: .pink, text: "Audio accessibility: text-to-speech & sound cues")
                     }.padding(.horizontal, 30)
                 }
                 Spacer()
@@ -2405,6 +2631,7 @@ struct ContentView: View {
     @State private var showTaskInput = false; @State private var showTimer = false
     @State private var showQuiz = false; @State private var showShop = false
     @State private var showActivity = false; @State private var showOnboarding = true
+    @State private var showAccessibility = false
     @State private var selectedTask: TaskPiece?; @State private var quizGroupID: UUID?
 
     var hasQuizAvailable: Bool {
@@ -2442,6 +2669,16 @@ struct ContentView: View {
                             }
                             .accessibilityLabel("Activity and Knowledge Hub")
                             .accessibilityHint("View your study charts, mastery progress, and task history")
+                            Button(action: { showAccessibility = true }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "ear.badge.waveform").font(.title3)
+                                    Text("Accessibility & Audio").font(.system(.headline, design: .rounded))
+                                }.foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
+                                .background(LinearGradient(colors: [.purple, .pink], startPoint: .leading, endPoint: .trailing))
+                                .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .purple.opacity(0.3), radius: 12, y: 6)
+                            }
+                            .accessibilityLabel("Accessibility and audio settings")
+                            .accessibilityHint("Configure text to speech and sound cues for visually impaired users")
                             Spacer().frame(height: 30)
                         }.padding(.horizontal, 18).padding(.top, 10)
                     }
@@ -2463,6 +2700,7 @@ struct ContentView: View {
                 .sheet(isPresented: $showQuiz) { if let g = quizGroupID { QuizSheet(show: $showQuiz, groupID: g) } }
                 .sheet(isPresented: $showShop) { KingdomShopView(show: $showShop) }
                 .sheet(isPresented: $showActivity) { ActivityHubSheet(show: $showActivity) }
+                .sheet(isPresented: $showAccessibility) { AccessibilitySettingsView() }
                 .sheet(item: $kingdom.selectedBuilding) { bld in
                     BuildingInteriorSheet(building: bld)
                 }
