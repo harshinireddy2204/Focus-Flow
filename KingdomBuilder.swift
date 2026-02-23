@@ -24,21 +24,98 @@ struct TaskPiece: Identifiable, Codable {
     }
 }
 
+enum ShopCategory: String, CaseIterable, Identifiable {
+    case housing, economy, culture, defense, nature
+    var id: String { rawValue }
+    var name: String {
+        switch self {
+        case .housing: return "Housing"; case .economy: return "Economy"
+        case .culture: return "Culture"; case .defense: return "Defense"; case .nature: return "Nature"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .housing: return "house.fill"; case .economy: return "dollarsign.circle.fill"
+        case .culture: return "book.fill"; case .defense: return "shield.fill"; case .nature: return "leaf.fill"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .housing: return .blue; case .economy: return .orange
+        case .culture: return .purple; case .defense: return .red; case .nature: return .green
+        }
+    }
+    var description: String {
+        switch self {
+        case .housing: return "Grow your population"; case .economy: return "Generate passive income"
+        case .culture: return "Boost XP earned"; case .defense: return "Protect your streak"; case .nature: return "Beautify your kingdom"
+        }
+    }
+}
+
 enum BuildingType: String, CaseIterable, Codable {
-    case hut, house, shop, market, fountain, castle, road, tower, garden, windmill
+    case cottage, house, manor, palace
+    case marketStall, shop, tradingPost, bank
+    case library, school, university, academy
+    case watchtower, wall, fortress, castle
+    case garden, park, fountain, lake
+
     var emoji: String {
         switch self {
-        case .hut: return "🛖"; case .house: return "🏠"; case .shop: return "🏪"
-        case .market: return "🏛️"; case .fountain: return "⛲"; case .castle: return "🏰"
-        case .road: return "🛣️"; case .tower: return "🗼"; case .garden: return "🌳"; case .windmill: return "🌾"
+        case .cottage: return "🛖"; case .house: return "🏠"; case .manor: return "🏡"; case .palace: return "👑"
+        case .marketStall: return "🏪"; case .shop: return "🛒"; case .tradingPost: return "🏛️"; case .bank: return "🏦"
+        case .library: return "📚"; case .school: return "🏫"; case .university: return "🎓"; case .academy: return "🔬"
+        case .watchtower: return "🗼"; case .wall: return "🧱"; case .fortress: return "🏯"; case .castle: return "🏰"
+        case .garden: return "🌳"; case .park: return "🌷"; case .fountain: return "⛲"; case .lake: return "🌊"
         }
     }
     var name: String {
         switch self {
-        case .hut: return "Hut"; case .house: return "House"; case .shop: return "Shop"
-        case .market: return "Market"; case .fountain: return "Fountain"; case .castle: return "Castle"
-        case .road: return "Road"; case .tower: return "Tower"; case .garden: return "Garden"; case .windmill: return "Windmill"
+        case .cottage: return "Cottage"; case .house: return "House"; case .manor: return "Manor"; case .palace: return "Palace"
+        case .marketStall: return "Market Stall"; case .shop: return "Shop"; case .tradingPost: return "Trading Post"; case .bank: return "Bank"
+        case .library: return "Library"; case .school: return "School"; case .university: return "University"; case .academy: return "Academy"
+        case .watchtower: return "Watchtower"; case .wall: return "Wall"; case .fortress: return "Fortress"; case .castle: return "Castle"
+        case .garden: return "Garden"; case .park: return "Park"; case .fountain: return "Fountain"; case .lake: return "Lake"
         }
+    }
+    var category: ShopCategory {
+        switch self {
+        case .cottage, .house, .manor, .palace: return .housing
+        case .marketStall, .shop, .tradingPost, .bank: return .economy
+        case .library, .school, .university, .academy: return .culture
+        case .watchtower, .wall, .fortress, .castle: return .defense
+        case .garden, .park, .fountain, .lake: return .nature
+        }
+    }
+    var cost: Int {
+        switch self {
+        case .cottage: return 15; case .house: return 40; case .manor: return 80; case .palace: return 200
+        case .marketStall: return 20; case .shop: return 50; case .tradingPost: return 100; case .bank: return 250
+        case .library: return 25; case .school: return 55; case .university: return 120; case .academy: return 280
+        case .watchtower: return 20; case .wall: return 45; case .fortress: return 100; case .castle: return 300
+        case .garden: return 10; case .park: return 25; case .fountain: return 50; case .lake: return 100
+        }
+    }
+    var benefit: String {
+        switch self {
+        case .cottage: return "+2 population"; case .house: return "+5 population"; case .manor: return "+10 population"; case .palace: return "+25 population"
+        case .marketStall: return "+3 coins/collect"; case .shop: return "+8 coins/collect"; case .tradingPost: return "+15 coins/collect"; case .bank: return "+30 coins/collect"
+        case .library: return "+5% XP boost"; case .school: return "+10% XP boost"; case .university: return "+20% XP boost"; case .academy: return "+35% XP boost"
+        case .watchtower: return "Streak shield (1)"; case .wall: return "Streak shield (2)"; case .fortress: return "Streak shield (3)"; case .castle: return "Streak shield (5)"
+        case .garden: return "+5 beauty"; case .park: return "+10 beauty"; case .fountain: return "+20 beauty"; case .lake: return "+40 beauty"
+        }
+    }
+    var benefitValue: Int {
+        switch self {
+        case .cottage: return 2; case .house: return 5; case .manor: return 10; case .palace: return 25
+        case .marketStall: return 3; case .shop: return 8; case .tradingPost: return 15; case .bank: return 30
+        case .library: return 5; case .school: return 10; case .university: return 20; case .academy: return 35
+        case .watchtower: return 1; case .wall: return 2; case .fortress: return 3; case .castle: return 5
+        case .garden: return 5; case .park: return 10; case .fountain: return 20; case .lake: return 40
+        }
+    }
+    static func forCategory(_ cat: ShopCategory) -> [BuildingType] {
+        allCases.filter { $0.category == cat }
     }
 }
 
@@ -55,10 +132,6 @@ struct KingdomBuilding: Identifiable, Codable {
     }
 }
 
-struct Business: Identifiable {
-    let id = UUID(); var name: String; var icon: String; var coinsPerHour: Int; var cost: Int; var owned: Int = 0
-}
-
 struct ConfettiParticle: Identifiable {
     let id = UUID(); let color: Color; let xOffset: CGFloat; let yOffset: CGFloat
     let size: CGFloat; let delay: Double; let duration: Double; let rotation: Double
@@ -69,12 +142,6 @@ struct ConfettiParticle: Identifiable {
 class KingdomState: ObservableObject {
     @Published var tasks: [TaskPiece] = []
     @Published var buildings: [KingdomBuilding] = []
-    @Published var businesses: [Business] = [
-        Business(name: "Coffee Cart", icon: "☕", coinsPerHour: 5, cost: 50),
-        Business(name: "Book Shop", icon: "📚", coinsPerHour: 10, cost: 100),
-        Business(name: "Study Hall", icon: "✏️", coinsPerHour: 20, cost: 200),
-        Business(name: "Library", icon: "🏛️", coinsPerHour: 50, cost: 500)
-    ]
     @Published var coins: Int = 0
     @Published var totalFocusMinutes: Int = 0
     @Published var completedGroups: Set<UUID> = []
@@ -84,8 +151,21 @@ class KingdomState: ObservableObject {
     @Published var showCelebration: Bool = false
     @Published var showLevelUp: Bool = false
     @Published var previousLevel: Int = 1
+    @Published var lastCoinsEarned: Int = 0
+    @Published var lastGroupBonus: Int = 0
+    @Published var showShopHint: Bool = false
 
     let focusDuration: Int = 15
+    let coinsPerTask: Int = 10
+    let groupBonusCoins: Int = 50
+
+    // MARK: Kingdom Stats (computed from placed buildings)
+
+    var population: Int { buildings.filter { $0.type.category == .housing }.reduce(0) { $0 + $1.type.benefitValue } }
+    var economyIncome: Int { buildings.filter { $0.type.category == .economy }.reduce(0) { $0 + $1.type.benefitValue } }
+    var xpBoostPercent: Int { buildings.filter { $0.type.category == .culture }.reduce(0) { $0 + $1.type.benefitValue } }
+    var streakShield: Int { buildings.filter { $0.type.category == .defense }.reduce(0) { $0 + $1.type.benefitValue } }
+    var beautyScore: Int { buildings.filter { $0.type.category == .nature }.reduce(0) { $0 + $1.type.benefitValue } }
 
     var level: Int {
         let xp = totalXP
@@ -94,7 +174,11 @@ class KingdomState: ObservableObject {
         if xp < 3000 { return 7 }; if xp < 4000 { return 8 }; if xp < 5500 { return 9 }
         return 10
     }
-    var totalXP: Int { totalFocusMinutes * 10 + buildingCount * 50 + coins }
+    var baseXP: Int { totalFocusMinutes * 10 + buildingCount * 50 + coins }
+    var totalXP: Int {
+        let boost = Double(xpBoostPercent) / 100.0
+        return Int(Double(baseXP) * (1.0 + boost))
+    }
     var xpForCurrentLevel: Int {
         let t = [0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5500, 99999]
         return t[min(level, t.count - 1) - 1]
@@ -107,7 +191,6 @@ class KingdomState: ObservableObject {
         let c = totalXP - xpForCurrentLevel; let n = xpForNextLevel - xpForCurrentLevel
         guard n > 0 else { return 1.0 }; return min(1.0, Double(c) / Double(n))
     }
-    var passiveIncome: Int { businesses.reduce(0) { $0 + ($1.coinsPerHour * $1.owned) } }
     var kingdomTitle: String {
         switch level {
         case 1: return "Settlement"; case 2: return "Hamlet"; case 3: return "Village"
@@ -117,6 +200,40 @@ class KingdomState: ObservableObject {
         }
     }
 
+    // MARK: AI City Advisor
+
+    var aiAdvisorTip: String {
+        if buildings.isEmpty { return "Start by building a Cottage to settle your first citizens!" }
+        let cats = Dictionary(grouping: buildings, by: { $0.type.category })
+        let housingCount = cats[.housing]?.count ?? 0
+        let economyCount = cats[.economy]?.count ?? 0
+        let cultureCount = cats[.culture]?.count ?? 0
+        let defenseCount = cats[.defense]?.count ?? 0
+        let natureCount = cats[.nature]?.count ?? 0
+        let total = buildings.count
+
+        if economyCount == 0 && total >= 1 { return "Build a Market Stall to start earning passive income!" }
+        if defenseCount == 0 && focusStreak >= 3 { return "Your streak is valuable! Build a Watchtower to protect it." }
+        if cultureCount == 0 && total >= 3 { return "A Library would boost your XP — level up faster!" }
+        if natureCount == 0 && total >= 4 { return "Your citizens want a Garden! Beautify your kingdom." }
+        if Double(economyCount) / Double(max(total, 1)) < 0.15 { return "Your economy is weak — invest in more shops!" }
+        if Double(housingCount) / Double(max(total, 1)) < 0.15 { return "Build more housing to grow your population!" }
+        if Double(cultureCount) / Double(max(total, 1)) < 0.1 { return "Culture buildings boost XP — consider a School!" }
+        if focusStreak >= 5 && streakShield < 2 { return "Great streak! Upgrade defenses to protect it." }
+        if beautyScore < 15 && total >= 6 { return "Parks and fountains make your kingdom beautiful!" }
+
+        let tips = [
+            "Great balance! Keep growing all categories.",
+            "Your kingdom is thriving! Try upgrading to bigger buildings.",
+            "Diversify your kingdom for the best bonuses!",
+            "Every building makes your kingdom stronger!",
+            "You're building an amazing kingdom! Keep it up!"
+        ]
+        return tips[total % tips.count]
+    }
+
+    // MARK: Actions
+
     func addTasks(_ newTasks: [TaskPiece], groupID: UUID) {
         tasks.append(contentsOf: newTasks.map { var t = $0; t.groupID = groupID; return t })
     }
@@ -125,28 +242,44 @@ class KingdomState: ObservableObject {
         let oldLevel = level
         if let i = tasks.firstIndex(where: { $0.id == task.id }) { tasks[i].completed = true }
         totalFocusMinutes += task.minutes
-        buildingCount += 1
         focusStreak += 1
-        addBuilding()
-        checkGroupCompletion(groupID: task.groupID)
+
+        lastCoinsEarned = coinsPerTask
+        lastGroupBonus = 0
+        coins += coinsPerTask
+
+        let groupComplete = checkGroupCompletion(groupID: task.groupID)
+        if groupComplete {
+            lastGroupBonus = groupBonusCoins
+            coins += groupBonusCoins
+        }
+
         showCelebration = true
+        showShopHint = true
         if level > oldLevel {
             previousLevel = oldLevel
             showLevelUp = true
         }
     }
 
-    func addBuilding() {
-        let buildingType: BuildingType
-        switch buildingCount {
-        case 1...2: buildingType = .hut; case 3...4: buildingType = .house
-        case 5...6: buildingType = .shop; case 7...8: buildingType = .market
-        case 9...10: buildingType = .tower; default: buildingType = .castle
+    @discardableResult
+    func checkGroupCompletion(groupID: UUID) -> Bool {
+        let g = tasks.filter { $0.groupID == groupID }
+        if g.allSatisfy({ $0.completed }) && !g.isEmpty && !completedGroups.contains(groupID) {
+            completedGroups.insert(groupID)
+            return true
         }
+        return false
+    }
+
+    func purchaseBuilding(type: BuildingType) {
+        guard coins >= type.cost else { return }
+        coins -= type.cost
+        buildingCount += 1
         let col = (buildingCount - 1) % 5
         let row = (buildingCount - 1) / 5
         let building = KingdomBuilding(
-            type: buildingType, col: col, row: row,
+            type: type, col: col, row: row,
             jitterX: CGFloat.random(in: -0.02...0.02),
             jitterY: CGFloat.random(in: -0.01...0.01)
         )
@@ -154,33 +287,19 @@ class KingdomState: ObservableObject {
         withAnimation(.spring(response: 0.8, dampingFraction: 0.6)) {
             if let i = buildings.firstIndex(where: { $0.id == building.id }) { buildings[i].scale = 1.0 }
         }
-        if buildingCount % 3 == 0 { addDecoration() }
     }
 
-    func addDecoration() {
-        let types: [BuildingType] = [.garden, .road, .windmill]
-        let type = types[buildingCount % types.count]
-        let decoration = KingdomBuilding(
-            type: type, col: Int.random(in: 0...5), row: Int.random(in: 0...2),
-            jitterX: CGFloat.random(in: -0.03...0.03),
-            jitterY: CGFloat.random(in: -0.01...0.01)
-        )
-        buildings.append(decoration)
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-            if let i = buildings.firstIndex(where: { $0.id == decoration.id }) { buildings[i].scale = 1.0 }
-        }
+    func collectEconomyIncome() {
+        guard economyIncome > 0 else { return }
+        coins += economyIncome
     }
 
-    func checkGroupCompletion(groupID: UUID) {
-        let g = tasks.filter { $0.groupID == groupID }
-        if g.allSatisfy({ $0.completed }) && !g.isEmpty && !completedGroups.contains(groupID) {
-            completedGroups.insert(groupID)
-        }
+    func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
+
+    func buildingsOfType(_ type: BuildingType) -> Int {
+        buildings.filter { $0.type == type }.count
     }
-    func buyBusiness(_ b: Business) {
-        if coins >= b.cost { coins -= b.cost; if let i = businesses.firstIndex(where: { $0.id == b.id }) { businesses[i].owned += 1 } }
-    }
-    func collectPassiveCoins() { coins += passiveIncome }
+
     func loadDemoTask() {
         let g = UUID()
         addTasks([
@@ -782,14 +901,15 @@ struct KingdomView: View {
                     let depthScale = buildingScale(row: building.row)
 
                     VStack(spacing: 0) {
+                        let isLarge = [BuildingType.castle, .palace, .fortress, .bank, .academy, .university].contains(building.type)
                         ZStack {
                             Ellipse()
                                 .fill(Color.black.opacity(0.15))
                                 .frame(width: 40 * depthScale, height: 10 * depthScale)
-                                .offset(y: building.type == .castle ? 28 : 22)
+                                .offset(y: isLarge ? 28 : 22)
 
                             Text(building.type.emoji)
-                                .font(.system(size: (building.type == .castle ? 52 : 38) * depthScale))
+                                .font(.system(size: (isLarge ? 52 : 38) * depthScale))
                                 .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
                         }
 
@@ -797,7 +917,7 @@ struct KingdomView: View {
                             .font(.system(size: max(8, 9 * depthScale), weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.black.opacity(0.5)))
+                            .background(Capsule().fill(building.type.category.color.opacity(0.7)))
                     }
                     .scaleEffect(building.scale)
                     .position(pos)
@@ -810,9 +930,9 @@ struct KingdomView: View {
                             Text("🏗️").font(.system(size: 72))
                         }
                         Text("Your Kingdom Awaits").font(.system(.title2, design: .rounded)).bold().foregroundColor(.white).shadow(color: .black.opacity(0.3), radius: 4)
-                        Text("Complete focus sessions to build!").font(.subheadline).foregroundColor(.white.opacity(0.9))
+                        Text("Earn coins from tasks → Build in the Shop!").font(.subheadline).foregroundColor(.white.opacity(0.9))
                     }
-                    .accessibilityLabel("Empty kingdom. Complete focus sessions to add buildings.")
+                    .accessibilityLabel("Empty kingdom. Complete tasks to earn coins and build from the shop.")
                 }
 
                 VStack {
@@ -1002,7 +1122,8 @@ struct QuizAvailableBanner: View {
 }
 
 struct ActionButtons: View {
-    @Binding var showTaskInput: Bool; @Binding var showBusiness: Bool; let hasBusinesses: Bool
+    @EnvironmentObject var kingdom: KingdomState
+    @Binding var showTaskInput: Bool; @Binding var showShop: Bool
     var body: some View {
         VStack(spacing: 14) {
             Button(action: { showTaskInput = true }) {
@@ -1013,15 +1134,18 @@ struct ActionButtons: View {
                 .background(LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing))
                 .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .purple.opacity(0.35), radius: 12, y: 6)
             }
-            if hasBusinesses {
-                Button(action: { showBusiness = true }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "building.2.crop.circle.fill").font(.title3)
-                        Text("Manage Businesses").font(.system(.headline, design: .rounded))
-                    }.foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
-                    .background(LinearGradient(colors: [.orange, .yellow], startPoint: .leading, endPoint: .trailing))
-                    .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .orange.opacity(0.3), radius: 12, y: 6)
-                }
+            Button(action: { showShop = true }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "storefront.fill").font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Kingdom Shop").font(.system(.headline, design: .rounded))
+                        if kingdom.coins > 0 {
+                            Text("💰 \(kingdom.coins) coins to spend").font(.caption)
+                        }
+                    }
+                }.foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
+                .background(LinearGradient(colors: [.orange, .yellow], startPoint: .leading, endPoint: .trailing))
+                .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .orange.opacity(0.3), radius: 12, y: 6)
             }
         }
     }
@@ -1276,34 +1400,59 @@ struct TimerContent: View {
 }
 
 struct CompletionScreen: View {
+    @EnvironmentObject var kingdom: KingdomState
     @Binding var show: Bool; let streak: Int
     @State private var celebrate = false; @State private var showConfetti = false
+    @State private var coinsPop = false
     var body: some View {
         ZStack {
             if showConfetti { ConfettiView(count: 60) }
-            VStack(spacing: 28) {
+            VStack(spacing: 24) {
                 Spacer()
                 ZStack { PulseRing(color: .yellow.opacity(0.4)).frame(width: 180, height: 180)
                     Text("🎉").font(.system(size: 100)).scaleEffect(celebrate ? 1.15 : 0.9) }
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     Text("Session Complete!").font(.system(.largeTitle, design: .rounded)).bold().foregroundColor(.white)
-                    Text("New building added to your kingdom!").font(.system(.title3, design: .rounded)).foregroundColor(.white.opacity(0.85)).multilineTextAlignment(.center)
+
+                    HStack(spacing: 10) {
+                        Text("💰").font(.system(size: 32)).scaleEffect(coinsPop ? 1.2 : 0.8)
+                        Text("+\(kingdom.lastCoinsEarned) coins").font(.system(.title2, design: .rounded)).bold().foregroundColor(.orange)
+                    }
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.15)).clipShape(Capsule())
+
+                    if kingdom.lastGroupBonus > 0 {
+                        HStack(spacing: 8) {
+                            Text("⭐").font(.system(size: 24))
+                            Text("ALL TASKS DONE! +\(kingdom.lastGroupBonus) bonus!").font(.system(.headline, design: .rounded)).foregroundColor(.yellow)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Color.yellow.opacity(0.15)).clipShape(Capsule())
+                    }
+
                     if streak > 1 {
                         HStack(spacing: 6) { Text("🔥"); Text("\(streak) session streak!").font(.headline).foregroundColor(.orange) }
                             .padding(.horizontal, 20).padding(.vertical, 10)
                             .background(Color.orange.opacity(0.15)).clipShape(Capsule())
                     }
+
+                    Text("Spend your coins in the Kingdom Shop!").font(.system(.subheadline, design: .rounded))
+                        .foregroundColor(.white.opacity(0.7)).padding(.top, 4)
                 }
                 Spacer()
                 Button(action: { show = false }) {
-                    HStack(spacing: 10) { Image(systemName: "crown.fill"); Text("View Kingdom") }
+                    HStack(spacing: 10) { Image(systemName: "crown.fill"); Text("View Kingdom & Shop") }
                         .font(.system(.headline, design: .rounded)).foregroundColor(.white).padding(.horizontal, 36).padding(.vertical, 18)
                         .background(LinearGradient(colors: [.green, .cyan], startPoint: .leading, endPoint: .trailing))
                         .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .green.opacity(0.4), radius: 12, y: 6)
                 }.padding(.bottom, 40)
             }.padding()
         }
-        .onAppear { showConfetti = true; withAnimation(.spring(response: 0.5, dampingFraction: 0.5).repeatForever(autoreverses: true)) { celebrate = true } }
+        .onAppear {
+            showConfetti = true
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.5).repeatForever(autoreverses: true)) { celebrate = true }
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.5).delay(0.3)) { coinsPop = true }
+        }
     }
 }
 
@@ -1336,11 +1485,7 @@ struct QuizSheet: View {
     func calculateReward() -> Int { groupTasks.count * 50 + (understanding + confidence) * 10 }
     func submitQuiz() {
         kingdom.coins += calculateReward(); kingdom.completedGroups.insert(groupID)
-        let b = KingdomBuilding(type: .fountain, col: 3, row: 1)
-        kingdom.buildings.append(b)
-        withAnimation(.spring(response: 0.8, dampingFraction: 0.6)) {
-            if let i = kingdom.buildings.firstIndex(where: { $0.id == b.id }) { kingdom.buildings[i].scale = 1.0 }
-        }
+        kingdom.showShopHint = true
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
     }
 }
@@ -1411,11 +1556,11 @@ struct QuizResultsView: View {
                 VStack(spacing: 18) {
                     Text("You earned:").font(.system(.title3, design: .rounded)).foregroundColor(.secondary)
                     HStack(spacing: 10) { Text("💰").font(.system(size: 36)); Text("\(reward)").font(.system(size: 44, weight: .bold, design: .rounded)).foregroundColor(.orange); Text("coins").font(.system(.title3, design: .rounded)).foregroundColor(.secondary) }.scaleEffect(showCoins ? 1.08 : 1.0)
-                    HStack(spacing: 6) { Image(systemName: "sparkles").foregroundColor(.purple); Text("Special Fountain unlocked!").font(.system(.headline, design: .rounded)).foregroundColor(.purple) }
+                    HStack(spacing: 6) { Image(systemName: "sparkles").foregroundColor(.purple); Text("Spend them in the Kingdom Shop!").font(.system(.headline, design: .rounded)).foregroundColor(.purple) }
                 }
                 Spacer()
                 Button(action: { show = false }) {
-                    HStack(spacing: 10) { Image(systemName: "crown.fill"); Text("View Kingdom & Businesses") }
+                    HStack(spacing: 10) { Image(systemName: "crown.fill"); Text("View Kingdom & Shop") }
                         .font(.system(.headline, design: .rounded)).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
                         .background(LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -1426,71 +1571,237 @@ struct QuizResultsView: View {
     }
 }
 
-// MARK: - Business System
+// MARK: - Interactive Kingdom Shop
 
-struct BusinessSheet: View {
+struct KingdomShopView: View {
     @EnvironmentObject var kingdom: KingdomState; @Binding var show: Bool
+    @State private var selectedCategory: ShopCategory = .housing
+    @State private var purchaseAnimation: BuildingType? = nil
+
     var body: some View {
         NavigationView {
             ZStack {
-                LinearGradient(colors: [Color(.systemBackground), Color.orange.opacity(0.03)], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 22) {
-                        BusinessHeader(coins: kingdom.coins, income: kingdom.passiveIncome)
-                        ForEach(kingdom.businesses) { b in BusinessCard(business: b, canAfford: kingdom.coins >= b.cost, onBuy: { kingdom.buyBusiness(b) }) }
-                        if kingdom.passiveIncome > 0 { CollectIncomeButton { kingdom.collectPassiveCoins() } }
-                    }.padding(20)
+                LinearGradient(colors: [Color(.systemBackground), Color.orange.opacity(0.04), Color.purple.opacity(0.03)],
+                               startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        ShopWalletBar(coins: kingdom.coins, buildings: kingdom.buildingCount)
+                        KingdomStatsBar()
+                        ShopAdvisorBanner(tip: kingdom.aiAdvisorTip)
+                        if kingdom.economyIncome > 0 {
+                            ShopCollectIncomeButton(income: kingdom.economyIncome) { kingdom.collectEconomyIncome() }
+                        }
+                        ShopCategoryPicker(selected: $selectedCategory)
+                        ShopCategoryDescription(category: selectedCategory)
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                            ForEach(BuildingType.forCategory(selectedCategory), id: \.rawValue) { type in
+                                ShopBuildingCard(
+                                    type: type,
+                                    owned: kingdom.buildingsOfType(type),
+                                    canAfford: kingdom.canAfford(type),
+                                    isPurchasing: purchaseAnimation == type
+                                ) {
+                                    purchaseBuilding(type)
+                                }
+                            }
+                        }
+                        Spacer().frame(height: 30)
+                    }.padding(.horizontal, 18).padding(.top, 10)
                 }
-            }.navigationTitle("Kingdom Businesses").navigationBarTitleDisplayMode(.inline)
+            }
+            .navigationTitle("Kingdom Shop").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { show = false } } }
         }
     }
-}
 
-struct BusinessHeader: View {
-    let coins: Int; let income: Int
-    var body: some View {
-        VStack(spacing: 18) {
-            Text("💼").font(.system(size: 56))
-            HStack(spacing: 40) {
-                VStack(spacing: 4) { Text("\(coins)").font(.system(.title, design: .rounded)).bold().foregroundColor(.primary); Text("Coins").font(.caption).foregroundColor(.secondary) }
-                VStack(spacing: 4) { HStack(spacing: 4) { Text("+\(income)").font(.system(.title, design: .rounded)).bold().foregroundColor(.green); Text("/hr").font(.caption).foregroundColor(.secondary) }; Text("Passive Income").font(.caption).foregroundColor(.secondary) }
-            }
-            Text("Build businesses to earn coins while you study!").font(.subheadline).foregroundColor(.secondary)
-        }.padding(20).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 18))
+    private func purchaseBuilding(_ type: BuildingType) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { purchaseAnimation = type }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            kingdom.purchaseBuilding(type: type)
+            withAnimation(.spring(response: 0.3)) { purchaseAnimation = nil }
+        }
     }
 }
 
-struct BusinessCard: View {
-    let business: Business; let canAfford: Bool; let onBuy: () -> Void
+struct ShopWalletBar: View {
+    let coins: Int; let buildings: Int
     var body: some View {
-        HStack(spacing: 16) {
-            Text(business.icon).font(.system(size: 44))
-            VStack(alignment: .leading, spacing: 6) {
-                Text(business.name).font(.system(.headline, design: .rounded)).foregroundColor(.primary)
-                HStack(spacing: 4) { Text("+\(business.coinsPerHour)").font(.subheadline).foregroundColor(.green).bold(); Text("coins/hr").font(.caption).foregroundColor(.secondary) }
-                if business.owned > 0 { Text("Owned: \(business.owned)").font(.caption).foregroundColor(.purple).bold() }
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("💰").font(.system(size: 28))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(coins)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.orange)
+                    Text("coins").font(.caption2).foregroundColor(.secondary)
+                }
+            }.frame(maxWidth: .infinity)
+            Divider().frame(height: 36)
+            HStack(spacing: 8) {
+                Text("🏘️").font(.system(size: 28))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(buildings)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.purple)
+                    Text("buildings").font(.caption2).foregroundColor(.secondary)
+                }
+            }.frame(maxWidth: .infinity)
+        }
+        .padding(.vertical, 14).padding(.horizontal, 8)
+        .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: .orange.opacity(0.1), radius: 8, y: 4)
+    }
+}
+
+struct KingdomStatsBar: View {
+    @EnvironmentObject var kingdom: KingdomState
+    var body: some View {
+        HStack(spacing: 0) {
+            KingdomStatPill(emoji: "👥", value: kingdom.population, label: "Pop", color: .blue)
+            KingdomStatPill(emoji: "💵", value: kingdom.economyIncome, label: "Income", color: .green)
+            KingdomStatPill(emoji: "📖", value: kingdom.xpBoostPercent, label: "XP%", color: .purple)
+            KingdomStatPill(emoji: "🛡️", value: kingdom.streakShield, label: "Shield", color: .red)
+            KingdomStatPill(emoji: "🌸", value: kingdom.beautyScore, label: "Beauty", color: .pink)
+        }
+        .padding(.vertical, 10).padding(.horizontal, 4)
+        .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct KingdomStatPill: View {
+    let emoji: String; let value: Int; let label: String; let color: Color
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(emoji).font(.system(size: 16))
+            Text("\(value)").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundColor(color)
+            Text(label).font(.system(size: 9)).foregroundColor(.secondary)
+        }.frame(maxWidth: .infinity)
+    }
+}
+
+struct ShopAdvisorBanner: View {
+    let tip: String
+    @State private var sparkle = false
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(Color.cyan.opacity(0.15)).frame(width: 48, height: 48)
+                Text("🤖").font(.system(size: 26)).scaleEffect(sparkle ? 1.1 : 1.0)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AI City Advisor").font(.system(.caption, design: .rounded)).bold().foregroundColor(.cyan)
+                Text(tip).font(.system(.subheadline, design: .rounded)).foregroundColor(.primary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Button(action: onBuy) {
-                VStack(spacing: 4) { Text("💰 \(business.cost)").font(.system(.subheadline, design: .rounded)).bold(); Text("Buy").font(.caption) }
-                    .foregroundColor(.white).padding(.horizontal, 18).padding(.vertical, 12)
-                    .background(canAfford ? Color.orange : Color.gray.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 12))
-            }.disabled(!canAfford)
-        }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        }
+        .padding(14)
+        .background(LinearGradient(colors: [Color.cyan.opacity(0.08), Color.blue.opacity(0.05)], startPoint: .leading, endPoint: .trailing))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cyan.opacity(0.25), lineWidth: 1.5))
+        .onAppear { withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) { sparkle = true } }
     }
 }
 
-struct CollectIncomeButton: View {
-    let action: () -> Void; @State private var pulse = false
+struct ShopCollectIncomeButton: View {
+    let income: Int; let action: () -> Void
+    @State private var pulse = false
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) { Image(systemName: "dollarsign.circle.fill").scaleEffect(pulse ? 1.15 : 1.0); Text("Collect Passive Income") }
-                .font(.system(.headline, design: .rounded)).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 18)
-                .background(LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            HStack(spacing: 12) {
+                Image(systemName: "dollarsign.circle.fill").font(.title3).scaleEffect(pulse ? 1.15 : 1.0)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Collect Economy Income").font(.system(.subheadline, design: .rounded)).bold()
+                    Text("+\(income) coins from your shops & banks").font(.caption)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption)
+            }
+            .foregroundColor(.white).padding(14)
+            .background(LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .onAppear { withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) { pulse = true } }
+    }
+}
+
+struct ShopCategoryPicker: View {
+    @Binding var selected: ShopCategory
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(ShopCategory.allCases) { cat in
+                    Button(action: { withAnimation(.spring(response: 0.3)) { selected = cat } }) {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(selected == cat
+                                          ? LinearGradient(colors: [cat.color, cat.color.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                                          : LinearGradient(colors: [Color.gray.opacity(0.1), Color.gray.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+                                    .frame(width: 52, height: 52)
+                                Image(systemName: cat.icon).font(.system(size: 20))
+                                    .foregroundColor(selected == cat ? .white : .secondary)
+                            }
+                            Text(cat.name).font(.system(size: 11, weight: selected == cat ? .bold : .medium, design: .rounded))
+                                .foregroundColor(selected == cat ? cat.color : .secondary)
+                        }
+                    }
+                }
+            }.padding(.horizontal, 4)
+        }
+    }
+}
+
+struct ShopCategoryDescription: View {
+    let category: ShopCategory
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: category.icon).foregroundColor(category.color)
+            Text(category.description).font(.system(.subheadline, design: .rounded)).foregroundColor(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+struct ShopBuildingCard: View {
+    let type: BuildingType; let owned: Int; let canAfford: Bool; let isPurchasing: Bool
+    let onBuy: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(canAfford
+                          ? LinearGradient(colors: [type.category.color.opacity(0.1), type.category.color.opacity(0.04)], startPoint: .top, endPoint: .bottom)
+                          : LinearGradient(colors: [Color.gray.opacity(0.06), Color.gray.opacity(0.03)], startPoint: .top, endPoint: .bottom))
+                VStack(spacing: 8) {
+                    Text(type.emoji).font(.system(size: 44))
+                        .scaleEffect(isPurchasing ? 1.3 : 1.0)
+                        .opacity(isPurchasing ? 0.5 : 1.0)
+                    Text(type.name).font(.system(.subheadline, design: .rounded)).bold()
+                        .foregroundColor(.primary).lineLimit(1)
+                    Text(type.benefit).font(.system(size: 11, design: .rounded))
+                        .foregroundColor(type.category.color).lineLimit(1)
+                    if owned > 0 {
+                        Text("Owned: \(owned)").font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.white).padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Capsule().fill(type.category.color.opacity(0.7)))
+                    }
+                }.padding(.vertical, 14)
+            }
+            .frame(height: 160)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(
+                canAfford ? type.category.color.opacity(0.3) : Color.gray.opacity(0.15), lineWidth: 1.5))
+
+            Button(action: onBuy) {
+                HStack(spacing: 6) {
+                    Text("💰").font(.system(size: 12))
+                    Text("\(type.cost)").font(.system(.subheadline, design: .rounded)).bold()
+                }
+                .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 10)
+                .background(canAfford ? type.category.color : Color.gray.opacity(0.35))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .disabled(!canAfford)
+        }
     }
 }
 
@@ -1508,9 +1819,10 @@ struct OnboardingOverlay: View {
                     Text("Kingdom Builder").font(.system(.largeTitle, design: .rounded)).bold().foregroundColor(.primary)
                     Text("Turn overwhelming tasks into focused sessions.\nEach session builds your kingdom.").font(.system(.body, design: .rounded)).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
                     VStack(alignment: .leading, spacing: 14) {
-                        OnboardingStep(icon: "brain.head.profile", color: .purple, text: "AI breaks big tasks into focused pieces")
-                        OnboardingStep(icon: "shield.checkered", color: .cyan, text: "Focus Shield blocks distractions")
-                        OnboardingStep(icon: "flame.fill", color: .orange, text: "Build streaks, earn coins, grow your kingdom")
+                        OnboardingStep(icon: "brain.head.profile", color: .purple, text: "AI breaks any task into focused pieces")
+                        OnboardingStep(icon: "dollarsign.circle.fill", color: .orange, text: "Earn 10 coins per session, bonuses for groups")
+                        OnboardingStep(icon: "storefront.fill", color: .green, text: "Build YOUR kingdom — choose from the shop")
+                        OnboardingStep(icon: "shield.checkered", color: .cyan, text: "Focus Shield protects your streak")
                     }.padding(.horizontal, 30)
                 }
                 Spacer()
@@ -1543,7 +1855,7 @@ struct OnboardingStep: View {
 struct ContentView: View {
     @EnvironmentObject var kingdom: KingdomState
     @State private var showTaskInput = false; @State private var showTimer = false
-    @State private var showQuiz = false; @State private var showBusiness = false
+    @State private var showQuiz = false; @State private var showShop = false
     @State private var showOnboarding = true; @State private var selectedTask: TaskPiece?; @State private var quizGroupID: UUID?
 
     var hasQuizAvailable: Bool {
@@ -1568,8 +1880,7 @@ struct ContentView: View {
                                 QuizAvailableBanner { if let g = getFirstUnquizzedGroup() { quizGroupID = g; showQuiz = true } }
                             }
                             ActiveTasksList(selectedTask: $selectedTask, showTimer: $showTimer)
-                            ActionButtons(showTaskInput: $showTaskInput, showBusiness: $showBusiness,
-                                          hasBusinesses: kingdom.coins > 0 || kingdom.businesses.contains { $0.owned > 0 })
+                            ActionButtons(showTaskInput: $showTaskInput, showShop: $showShop)
                             Spacer().frame(height: 30)
                         }.padding(.horizontal, 18).padding(.top, 10)
                     }
@@ -1589,7 +1900,7 @@ struct ContentView: View {
                 .sheet(isPresented: $showTaskInput) { TaskInputSheet(show: $showTaskInput) }
                 .sheet(isPresented: $showTimer) { if let t = selectedTask { FocusTimerSheet(show: $showTimer, task: t, duration: kingdom.focusDuration) } }
                 .sheet(isPresented: $showQuiz) { if let g = quizGroupID { QuizSheet(show: $showQuiz, groupID: g) } }
-                .sheet(isPresented: $showBusiness) { BusinessSheet(show: $showBusiness) }
+                .sheet(isPresented: $showShop) { KingdomShopView(show: $showShop) }
             }.navigationViewStyle(.stack)
         }
     }
