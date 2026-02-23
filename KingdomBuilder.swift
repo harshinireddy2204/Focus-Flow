@@ -617,7 +617,8 @@ struct GlassCard<Content: View>: View {
 
     var body: some View {
         content
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
                     .stroke(
@@ -719,13 +720,14 @@ struct LevelProgressBar: View {
             .frame(height: 16)
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
             withAnimation(.spring(response: 1.0, dampingFraction: 0.8).delay(0.3)) {
                 animatedProgress = kingdom.xpProgress
             }
         }
-        .onChange(of: kingdom.totalXP) { _ in
+        .onChange(of: kingdom.totalXP) {
             withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
                 animatedProgress = kingdom.xpProgress
             }
@@ -888,7 +890,8 @@ struct KingdomView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
                             .padding(10)
                     }
                     Spacer()
@@ -954,7 +957,8 @@ struct StatCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
                 .stroke(.white.opacity(0.4), lineWidth: 1)
@@ -1106,15 +1110,16 @@ struct TaskRowView: View {
                         colors: [Color.green, Color.green.opacity(0.8)],
                         startPoint: .top,
                         endPoint: .bottom
-                    ),
-                    in: RoundedRectangle(cornerRadius: 12)
+                    )
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .shadow(color: .green.opacity(0.3), radius: 6, y: 3)
             }
             .accessibilityLabel("Start focus session for \(task.title)")
         }
         .padding(14)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.06), radius: 10, y: 5)
         .scaleEffect(appeared ? 1 : 0.95)
         .opacity(appeared ? 1 : 0)
@@ -1162,9 +1167,9 @@ struct QuizAvailableBanner: View {
                     colors: [Color.yellow.opacity(0.15), Color.orange.opacity(0.1)],
                     startPoint: .leading,
                     endPoint: .trailing
-                ),
-                in: RoundedRectangle(cornerRadius: 18)
+                )
             )
+            .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
                     .stroke(Color.orange.opacity(0.4), lineWidth: 1.5)
@@ -1203,9 +1208,9 @@ struct ActionButtons: View {
                         colors: [Color.purple, Color.blue],
                         startPoint: .leading,
                         endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 16)
+                    )
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: .purple.opacity(0.35), radius: 12, y: 6)
             }
             .accessibilityLabel("Add new task using AI breakdown")
@@ -1226,9 +1231,9 @@ struct ActionButtons: View {
                             colors: [Color.orange, Color.yellow],
                             startPoint: .leading,
                             endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 16)
+                        )
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(color: .orange.opacity(0.3), radius: 12, y: 6)
                 }
                 .accessibilityLabel("Manage your businesses")
@@ -1400,16 +1405,8 @@ struct InputView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .background(
-                    Group {
-                        if taskInput.isEmpty {
-                            Color.gray.opacity(0.4)
-                        } else {
-                            LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing)
-                        }
-                    },
-                    in: RoundedRectangle(cornerRadius: 16)
-                )
+                .background(taskInput.isEmpty ? Color.gray.opacity(0.4) : Color.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: taskInput.isEmpty ? .clear : .purple.opacity(0.3), radius: 10, y: 5)
             }
             .disabled(taskInput.isEmpty || isAnalyzing)
@@ -1488,7 +1485,8 @@ struct ResultsView: View {
                 Spacer()
             }
             .padding(16)
-            .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: .green.opacity(0.1), radius: 8, y: 4)
 
             ForEach(Array(breakdown.enumerated()), id: \.offset) { index, step in
@@ -1510,9 +1508,9 @@ struct ResultsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(
-                    LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing),
-                    in: RoundedRectangle(cornerRadius: 16)
+                    LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing)
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: .green.opacity(0.3), radius: 10, y: 5)
             }
             .accessibilityLabel("Add all \(breakdown.count) tasks to your list")
@@ -1556,7 +1554,8 @@ struct TaskBreakdownRow: View {
                 .foregroundColor(color.opacity(0.5))
         }
         .padding(14)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .shadow(color: color.opacity(0.12), radius: 8, y: 4)
         .scaleEffect(appeared ? 1 : 0.92)
         .opacity(appeared ? 1 : 0)
@@ -1783,7 +1782,8 @@ struct TimerContent: View {
                     .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
             }
             .padding(.bottom, 30)
         }
@@ -1835,9 +1835,9 @@ struct CompletionScreen: View {
                     .padding(.horizontal, 36)
                     .padding(.vertical, 18)
                     .background(
-                        LinearGradient(colors: [.green, .cyan], startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 16)
+                        LinearGradient(colors: [.green, .cyan], startPoint: .leading, endPoint: .trailing)
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(color: .green.opacity(0.4), radius: 12, y: 6)
                 }
                 .padding(.bottom, 40)
@@ -2014,7 +2014,8 @@ struct QuizQuestion: View {
             }
         }
         .padding(18)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 }
@@ -2046,7 +2047,8 @@ struct KeyLearningInput: View {
                 .foregroundColor(.secondary)
         }
         .padding(18)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 }
@@ -2065,16 +2067,8 @@ struct SubmitQuizButton: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-            .background(
-                Group {
-                    if isEnabled {
-                        LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing)
-                    } else {
-                        Color.gray.opacity(0.4)
-                    }
-                },
-                in: RoundedRectangle(cornerRadius: 16)
-            )
+            .background(isEnabled ? Color.purple : Color.gray.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: isEnabled ? .purple.opacity(0.3) : .clear, radius: 10, y: 5)
         }
         .disabled(!isEnabled)
@@ -2142,7 +2136,8 @@ struct QuizResultsView: View {
                         .foregroundColor(.primary)
                 }
                 .padding(18)
-                .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
 
                 Spacer()
@@ -2157,9 +2152,9 @@ struct QuizResultsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(
-                        LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 16)
+                        LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing)
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(color: .purple.opacity(0.3), radius: 10, y: 5)
                 }
                 .padding(.horizontal)
@@ -2267,7 +2262,8 @@ struct BusinessHeader: View {
                 .multilineTextAlignment(.center)
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("You have \(coins) coins and earn \(income) coins per hour from businesses")
     }
@@ -2317,18 +2313,15 @@ struct BusinessCard: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
-                .background(
-                    canAfford
-                    ? LinearGradient(colors: [.orange, .yellow], startPoint: .top, endPoint: .bottom)
-                    : LinearGradient(colors: [.gray.opacity(0.5), .gray.opacity(0.3)], startPoint: .top, endPoint: .bottom),
-                    in: RoundedRectangle(cornerRadius: 12)
-                )
+                .background(canAfford ? Color.orange : Color.gray.opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .disabled(!canAfford)
             .accessibilityLabel("Buy \(business.name) for \(business.cost) coins")
         }
         .padding(16)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
     }
 }
@@ -2349,9 +2342,9 @@ struct CollectIncomeButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
             .background(
-                LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing),
-                in: RoundedRectangle(cornerRadius: 16)
+                LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing)
             )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: .green.opacity(0.3), radius: 10, y: 5)
         }
         .onAppear {
@@ -2414,15 +2407,16 @@ struct OnboardingOverlay: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
                     .background(
-                        LinearGradient(colors: [.purple, .blue, .cyan], startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 18)
+                        LinearGradient(colors: [.purple, .blue, .cyan], startPoint: .leading, endPoint: .trailing)
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
                     .shadow(color: .purple.opacity(0.4), radius: 15, y: 8)
                 }
                 .padding(.horizontal, 30)
                 .padding(.bottom, 50)
             }
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 30))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 30))
             .padding(20)
             .scaleEffect(scale)
             .opacity(opacity)
