@@ -192,11 +192,31 @@ class KingdomState: ObservableObject {
 }
 
 // MARK: - AI Task Breakdown Engine
+//
+// On-device NLP: extracts ACTION + TOPIC from any input, then generates
+// context-aware steps. Runs fully offline (no network needed).
 
 class TaskAI {
+
+    enum TaskAction: String {
+        case learn, build, write, practice, prepare, research, organize, read, fix, memorize, generic
+    }
+
     static func breakdownTask(_ input: String) -> [String] {
-        let l = input.lowercased()
-        if l.contains("ml") || l.contains("machine learning") {
+        let raw = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let l = raw.lowercased()
+
+        if let specific = specificDomainBreakdown(l) { return specific }
+
+        let action = detectAction(l)
+        let topic = extractTopic(from: l)
+        return generateBreakdown(action: action, topic: topic)
+    }
+
+    // MARK: Specific domains with expert-level steps
+
+    private static func specificDomainBreakdown(_ l: String) -> [String]? {
+        if l.contains("machine learning") || (l.contains("ml") && l.contains("learn")) {
             if l.contains("math") {
                 return ["Review Linear Algebra basics (vectors, matrices)", "Study Calculus fundamentals (derivatives, gradients)",
                         "Learn Probability theory (distributions, Bayes theorem)", "Practice Statistics (mean, variance, regression)",
@@ -206,38 +226,253 @@ class TaskAI {
                     "Code a linear regression model", "Understand neural network basics",
                     "Build a simple classifier", "Test model on real dataset"]
         }
-        if l.contains("essay") || l.contains("paper") || l.contains("write") {
+        if (l.contains("biology") || l.contains("bio")) && (l.contains("exam") || l.contains("test")) {
+            return ["Review all biology lecture notes and diagrams", "Create flashcards for key terms and processes",
+                    "Draw and label diagrams from memory", "Summarize each chapter in your own words",
+                    "Practice with past biology exam questions", "Explain difficult concepts out loud",
+                    "Take a timed practice test under exam conditions"]
+        }
+        if l.contains("chemistry") || l.contains("chem") {
+            return ["Review the periodic table and element properties", "Study chemical bonding and molecular structures",
+                    "Balance practice chemical equations", "Learn reaction types and mechanisms",
+                    "Work through stoichiometry problems", "Practice lab-related questions",
+                    "Do a full timed practice set"]
+        }
+        if l.contains("physics") {
+            return ["Review fundamental laws and formulas", "Understand free-body diagrams and vector analysis",
+                    "Work through kinematics problems step by step", "Practice energy and momentum problems",
+                    "Solve circuit or wave problems (if applicable)", "Attempt multi-concept challenge problems",
+                    "Review all mistakes and redo them"]
+        }
+        if l.contains("history") {
+            return ["Create a timeline of major events and dates", "Identify key figures and their contributions",
+                    "Study cause-and-effect relationships between events", "Read primary source excerpts for context",
+                    "Practice writing short-answer responses", "Connect themes across different time periods",
+                    "Quiz yourself on dates, names, and significance"]
+        }
+        if l.contains("spanish") || l.contains("french") || l.contains("german") || l.contains("japanese")
+            || l.contains("chinese") || l.contains("language") || l.contains("vocab") {
+            let lang = extractTopic(from: l)
+            return ["Learn essential vocabulary for \(lang)", "Study grammar rules and sentence structure",
+                    "Practice pronunciation with example phrases", "Write simple sentences and short paragraphs",
+                    "Listen to native audio or conversations", "Have a practice conversation (real or simulated)",
+                    "Review mistakes and drill weak areas"]
+        }
+        if l.contains("guitar") || l.contains("piano") || l.contains("music") || l.contains("instrument") {
+            let subj = extractTopic(from: l)
+            return ["Learn proper posture and hand positioning for \(subj)", "Practice basic scales and finger exercises",
+                    "Study music theory fundamentals (notes, rhythm, chords)", "Learn a simple song from start to finish",
+                    "Practice chord transitions at slow tempo", "Play along with a backing track",
+                    "Record yourself and review for improvement"]
+        }
+        if l.contains("draw") || l.contains("sketch") || l.contains("paint") || l.contains("art") {
+            return ["Gather your materials and set up workspace", "Practice basic shapes and line control",
+                    "Study proportions and perspective fundamentals", "Copy a reference image step by step",
+                    "Experiment with shading and light sources", "Create an original piece from imagination",
+                    "Review your work and note areas to improve"]
+        }
+        if l.contains("essay") || l.contains("paper") {
             return ["Brainstorm ideas and choose your angle", "Research credible sources and take notes",
                     "Create detailed outline with main points", "Write strong thesis statement",
                     "Draft introduction paragraph", "Write body paragraphs with evidence",
                     "Draft compelling conclusion", "Revise for clarity and flow", "Proofread and fix grammar errors"]
         }
-        if l.contains("exam") || l.contains("test") || l.contains("study") {
-            return ["Review all class notes and materials", "Create summary sheet of key concepts",
-                    "Make flashcards for memorization", "Practice past exam questions",
-                    "Explain concepts out loud", "Take a timed practice test", "Review mistakes and weak areas"]
-        }
-        if l.contains("code") || l.contains("program") || l.contains("app") || l.contains("swift") {
-            return ["Define project requirements and goals", "Design system architecture",
-                    "Set up development environment", "Implement core functionality",
-                    "Write unit tests", "Debug and fix issues", "Refactor and optimize code", "Document your code"]
-        }
-        if l.contains("presentation") || l.contains("slides") || l.contains("talk") {
+        if l.contains("presentation") || l.contains("slides") || l.contains("talk") || l.contains("speech") {
             return ["Research topic thoroughly", "Outline key points and flow", "Create slide structure",
                     "Design visuals and diagrams", "Write speaker notes", "Practice delivery and timing", "Get feedback and revise"]
         }
-        if l.contains("read") || l.contains("book") || l.contains("chapter") {
-            return ["Skim table of contents and headings", "Read introduction and conclusion first",
-                    "Deep read each section with notes", "Highlight key arguments and evidence",
-                    "Summarize each chapter in your words", "Review and connect main themes"]
+        if l.contains("cook") || l.contains("recipe") || l.contains("bake") {
+            let dish = extractTopic(from: l)
+            return ["Find and read through the full recipe for \(dish)", "Gather all ingredients and tools needed",
+                    "Do all prep work (washing, chopping, measuring)", "Follow the cooking steps carefully",
+                    "Taste and adjust seasoning", "Plate and present your dish", "Clean up and note what to improve"]
         }
-        if l.contains("math") || l.contains("calculus") || l.contains("algebra") {
-            return ["Review prerequisite concepts", "Study new theorems and formulas", "Work through textbook examples",
-                    "Solve easy practice problems", "Attempt medium difficulty problems",
-                    "Challenge yourself with hard problems", "Review all mistakes and retry"]
+        if l.contains("workout") || l.contains("exercise") || l.contains("fitness") || l.contains("run") || l.contains("training") {
+            return ["Define your fitness goal and target areas", "Plan your workout routine and schedule",
+                    "Start with a proper warm-up (5-10 min)", "Complete the main exercise session",
+                    "Include a cool-down and stretching period", "Track your performance and progress",
+                    "Rest, recover, and plan the next session"]
         }
-        return ["Understand the full scope", "Break into smaller manageable chunks", "Prioritize tasks by importance",
-                "Start with the easiest part", "Build momentum with early wins", "Review and refine your work"]
+        if l.contains("photo") || l.contains("camera") || l.contains("film") || l.contains("video") {
+            let subj = extractTopic(from: l)
+            return ["Study composition rules (rule of thirds, leading lines)", "Learn your camera settings (ISO, aperture, shutter)",
+                    "Practice shooting in different lighting conditions", "Experiment with angles and perspectives for \(subj)",
+                    "Review and select your best shots", "Edit using basic adjustments (crop, exposure, color)",
+                    "Share your work and gather feedback"]
+        }
+        if l.contains("code") || l.contains("program") || l.contains("app") || l.contains("swift") || l.contains("python")
+            || l.contains("javascript") || l.contains("web") || l.contains("develop") {
+            let subj = extractTopic(from: l)
+            return ["Define project requirements and goals for \(subj)", "Design the architecture and data flow",
+                    "Set up development environment and tools", "Implement core functionality step by step",
+                    "Write tests for your code", "Debug and fix any issues",
+                    "Refactor for clean code and performance", "Document how it works"]
+        }
+        return nil
+    }
+
+    // MARK: Action detection from natural language
+
+    private static func detectAction(_ input: String) -> TaskAction {
+        let learnWords = ["learn", "understand", "study", "figure out", "explore", "master", "grasp", "comprehend"]
+        let buildWords = ["build", "create", "make", "develop", "design", "construct", "setup", "set up", "implement"]
+        let writeWords = ["write", "draft", "compose", "author", "blog", "essay", "paper", "report", "email"]
+        let practiceWords = ["practice", "drill", "rehearse", "train", "exercise", "improve", "work on", "get better"]
+        let prepareWords = ["prepare", "prep", "get ready", "study for", "review for", "cram"]
+        let researchWords = ["research", "investigate", "analyze", "compare", "evaluate", "assess"]
+        let organizeWords = ["organize", "plan", "sort", "clean", "arrange", "schedule", "manage", "declutter"]
+        let readWords = ["read", "book", "chapter", "article", "textbook"]
+        let fixWords = ["fix", "repair", "debug", "troubleshoot", "solve", "resolve"]
+        let memorizeWords = ["memorize", "remember", "flashcard", "vocab", "vocabulary", "definitions"]
+
+        if learnWords.contains(where: { input.contains($0) }) { return .learn }
+        if buildWords.contains(where: { input.contains($0) }) { return .build }
+        if writeWords.contains(where: { input.contains($0) }) { return .write }
+        if practiceWords.contains(where: { input.contains($0) }) { return .practice }
+        if prepareWords.contains(where: { input.contains($0) }) { return .prepare }
+        if researchWords.contains(where: { input.contains($0) }) { return .research }
+        if organizeWords.contains(where: { input.contains($0) }) { return .organize }
+        if readWords.contains(where: { input.contains($0) }) { return .read }
+        if fixWords.contains(where: { input.contains($0) }) { return .fix }
+        if memorizeWords.contains(where: { input.contains($0) }) { return .memorize }
+        return .generic
+    }
+
+    // MARK: Topic extraction - strips verbs/filler to get the core subject
+
+    static func extractTopic(from input: String) -> String {
+        let stopWords: Set<String> = [
+            "learn", "study", "understand", "practice", "build", "create", "make", "write", "draft",
+            "prepare", "research", "organize", "plan", "read", "fix", "memorize", "master", "improve",
+            "get", "better", "at", "how", "to", "the", "a", "an", "my", "for", "about", "of",
+            "in", "on", "with", "and", "or", "i", "want", "need", "should", "start", "begin",
+            "do", "work", "help", "me", "some", "new", "this", "that", "it", "up", "set"
+        ]
+        let words = input.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && !stopWords.contains($0) && $0.count > 1 }
+        let topic = words.joined(separator: " ")
+        return topic.isEmpty ? input : topic
+    }
+
+    // MARK: Dynamic step generation based on action + topic
+
+    private static func generateBreakdown(action: TaskAction, topic: String) -> [String] {
+        let t = topic
+
+        switch action {
+        case .learn:
+            return [
+                "Research what \(t) covers and its key areas",
+                "Study the fundamental concepts of \(t)",
+                "Take structured notes on core principles",
+                "Work through beginner-level examples in \(t)",
+                "Practice applying \(t) concepts to problems",
+                "Review mistakes and strengthen weak areas",
+                "Test yourself on \(t) without notes"
+            ]
+        case .build:
+            return [
+                "Define the requirements and goals for \(t)",
+                "Research examples and best practices for \(t)",
+                "Plan the structure and design of \(t)",
+                "Set up your tools and workspace",
+                "Build the core components of \(t) step by step",
+                "Test everything and fix any issues",
+                "Polish the details and finalize \(t)",
+                "Get feedback and make improvements"
+            ]
+        case .write:
+            return [
+                "Brainstorm ideas and define your angle on \(t)",
+                "Research and gather supporting material",
+                "Create a detailed outline for \(t)",
+                "Write a strong opening and thesis",
+                "Draft the main body with clear arguments",
+                "Write a compelling conclusion",
+                "Revise for clarity, flow, and grammar",
+                "Proofread and finalize \(t)"
+            ]
+        case .practice:
+            return [
+                "Assess your current skill level in \(t)",
+                "Review the fundamentals before practicing",
+                "Start with easy \(t) exercises to warm up",
+                "Increase difficulty progressively",
+                "Focus on areas where you make the most mistakes",
+                "Do a timed practice session for \(t)",
+                "Review all errors and redo them correctly"
+            ]
+        case .prepare:
+            return [
+                "Gather all study materials for \(t)",
+                "Review class notes and key concepts",
+                "Create a summary sheet for \(t)",
+                "Make flashcards for important terms and ideas",
+                "Practice with sample questions about \(t)",
+                "Take a timed mock test under real conditions",
+                "Review weak areas and do a final pass"
+            ]
+        case .research:
+            return [
+                "Define the scope and key questions about \(t)",
+                "Find credible sources and references for \(t)",
+                "Read and take notes on each source",
+                "Identify patterns and key findings in \(t)",
+                "Organize your notes into categories",
+                "Write a synthesis of what you found about \(t)",
+                "Review for gaps and find additional sources if needed"
+            ]
+        case .organize:
+            return [
+                "Assess the current state of \(t)",
+                "Define your desired outcome for \(t)",
+                "Sort and categorize everything related to \(t)",
+                "Create a clear system or structure",
+                "Execute the organization plan step by step",
+                "Review and adjust as needed"
+            ]
+        case .read:
+            return [
+                "Skim the table of contents and structure of \(t)",
+                "Read the introduction and conclusion first",
+                "Deep-read each section of \(t) with notes",
+                "Highlight key arguments and evidence",
+                "Summarize each section in your own words",
+                "Connect the main themes across \(t)",
+                "Review your notes for retention"
+            ]
+        case .fix:
+            return [
+                "Clearly define the problem with \(t)",
+                "Research common causes and solutions",
+                "Isolate the specific issue step by step",
+                "Attempt the most likely fix for \(t)",
+                "Test whether the fix resolved the issue",
+                "If not resolved, try alternative solutions",
+                "Document what worked for future reference"
+            ]
+        case .memorize:
+            return [
+                "List everything you need to memorize about \(t)",
+                "Group items into logical categories",
+                "Create flashcards or mnemonics for \(t)",
+                "Practice with spaced repetition (short intervals)",
+                "Test yourself without looking at notes",
+                "Review items you got wrong and repeat",
+                "Do a final complete recall test on \(t)"
+            ]
+        case .generic:
+            return [
+                "Define exactly what you want to achieve with \(t)",
+                "Break \(t) into smaller, manageable parts",
+                "Research the best approach for each part",
+                "Start with the most important piece of \(t)",
+                "Complete each section, building momentum",
+                "Review your progress and adjust your plan",
+                "Finalize and reflect on what you accomplished"
+            ]
+        }
     }
 }
 
@@ -807,7 +1042,7 @@ struct TaskInputSheet: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         if !showResults { InputView(taskInput: $taskInput, isAnalyzing: $isAnalyzing, analysisProgress: $analysisProgress, onAnalyze: analyzeTask) }
-                        else { ResultsView(breakdown: breakdown, colors: colors, onAddAll: addAllTasks) }
+                        else { ResultsView(breakdown: breakdown, colors: colors, originalInput: taskInput, onAddAll: addAllTasks) }
                     }.padding(20)
                 }
             }.navigationTitle("AI Task Breakdown").navigationBarTitleDisplayMode(.inline)
@@ -832,7 +1067,12 @@ struct TaskInputSheet: View {
 
 struct InputView: View {
     @Binding var taskInput: String; @Binding var isAnalyzing: Bool; @Binding var analysisProgress: Double; let onAnalyze: () -> Void
-    let suggestions = ["Study for biology exam", "Write research paper", "Learn ML math", "Build a mobile app", "Prepare presentation"]
+    let suggestions = ["Study for biology exam", "Learn statistics", "Write research paper", "Learn ML math",
+                        "Build a mobile app", "Prepare presentation", "Practice guitar", "Learn Spanish",
+                        "Study chemistry", "Research history"]
+    @State private var analyzePhase = 0
+    private let analyzeMessages = ["Scanning your task...", "Identifying key learning areas...", "Building your personalized plan...", "Finalizing steps..."]
+
     var body: some View {
         VStack(spacing: 28) {
             ZStack {
@@ -841,20 +1081,23 @@ struct InputView: View {
                     .foregroundStyle(LinearGradient(colors: [.purple, .blue], startPoint: .topLeading, endPoint: .bottomTrailing))
             }.accessibilityHidden(true)
             VStack(spacing: 8) {
-                Text("What's overwhelming you?").font(.system(.title2, design: .rounded)).bold().foregroundColor(.primary)
-                Text("AI will break it into focused 25-minute tasks").font(.subheadline).foregroundColor(.secondary)
+                Text("What do you want to focus on?").font(.system(.title2, design: .rounded)).bold().foregroundColor(.primary)
+                Text("Type anything — AI will create your perfect study plan").font(.subheadline).foregroundColor(.secondary)
             }.multilineTextAlignment(.center)
-            TextField("e.g., Learn math for machine learning", text: $taskInput)
+            TextField("e.g., Learn quantum physics, Study for SAT, Practice drawing...", text: $taskInput)
                 .font(.system(.body, design: .rounded)).foregroundColor(.primary).textFieldStyle(.plain)
                 .padding(16).background(Color(.systemBackground)).cornerRadius(14)
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(LinearGradient(colors: [.purple.opacity(0.4), .blue.opacity(0.3)], startPoint: .leading, endPoint: .trailing), lineWidth: 2))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(suggestions, id: \.self) { s in
-                        Button(action: { taskInput = s }) {
-                            Text(s).font(.system(.subheadline, design: .rounded)).foregroundColor(.purple)
-                                .padding(.horizontal, 16).padding(.vertical, 10).background(Color.purple.opacity(0.08))
-                                .cornerRadius(20).overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.purple.opacity(0.2), lineWidth: 1.5))
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Try these or type your own:").font(.system(.caption, design: .rounded)).foregroundColor(.secondary).padding(.leading, 4)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(suggestions, id: \.self) { s in
+                            Button(action: { taskInput = s }) {
+                                Text(s).font(.system(.subheadline, design: .rounded)).foregroundColor(.purple)
+                                    .padding(.horizontal, 16).padding(.vertical, 10).background(Color.purple.opacity(0.08))
+                                    .cornerRadius(20).overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.purple.opacity(0.2), lineWidth: 1.5))
+                            }
                         }
                     }
                 }
@@ -862,8 +1105,16 @@ struct InputView: View {
             if isAnalyzing {
                 VStack(spacing: 12) {
                     ProgressView(value: analysisProgress).progressViewStyle(LinearProgressViewStyle(tint: .purple)).scaleEffect(y: 2)
-                    Text("Analyzing your task...").font(.caption).foregroundColor(.secondary)
+                    Text(analyzeMessages[min(analyzePhase, analyzeMessages.count - 1)])
+                        .font(.caption).foregroundColor(.secondary)
+                        .animation(.easeInOut(duration: 0.3), value: analyzePhase)
                 }.padding()
+                .onAppear { analyzePhase = 0 }
+                .onChange(of: analysisProgress) {
+                    if analysisProgress > 0.25 { analyzePhase = 1 }
+                    if analysisProgress > 0.55 { analyzePhase = 2 }
+                    if analysisProgress > 0.85 { analyzePhase = 3 }
+                }
             }
             Spacer().frame(height: 20)
             Button(action: onAnalyze) {
@@ -877,13 +1128,21 @@ struct InputView: View {
 }
 
 struct ResultsView: View {
-    let breakdown: [String]; let colors: [Color]; let onAddAll: () -> Void
+    let breakdown: [String]; let colors: [Color]; let originalInput: String; let onAddAll: () -> Void
+    private var detectedTopic: String { TaskAI.extractTopic(from: originalInput.lowercased()) }
     var body: some View {
         VStack(spacing: 18) {
-            HStack(spacing: 14) {
-                ZStack { Circle().fill(Color.green.opacity(0.15)).frame(width: 48, height: 48); Image(systemName: "checkmark.circle.fill").font(.title).foregroundColor(.green) }
-                VStack(alignment: .leading, spacing: 4) { Text("Analysis Complete").font(.system(.headline, design: .rounded)).foregroundColor(.primary); Text("\(breakdown.count) tasks created").font(.subheadline).foregroundColor(.secondary) }
-                Spacer()
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    ZStack { Circle().fill(Color.green.opacity(0.15)).frame(width: 48, height: 48); Image(systemName: "checkmark.circle.fill").font(.title).foregroundColor(.green) }
+                    VStack(alignment: .leading, spacing: 4) { Text("Analysis Complete").font(.system(.headline, design: .rounded)).foregroundColor(.primary); Text("\(breakdown.count) personalized tasks created").font(.subheadline).foregroundColor(.secondary) }
+                    Spacer()
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkle").font(.caption).foregroundColor(.purple)
+                    Text("AI analyzed: \"\(originalInput)\"").font(.system(.caption, design: .rounded)).foregroundColor(.purple).lineLimit(1)
+                    Spacer()
+                }.padding(.horizontal, 4)
             }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .green.opacity(0.1), radius: 8, y: 4)
             ForEach(Array(breakdown.enumerated()), id: \.offset) { i, step in
                 TaskBreakdownRow(number: i+1, title: step, color: colors[i % colors.count], delay: Double(i)*0.08)
