@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 @main
 struct FocusFlowApp: App {
@@ -9,6 +10,16 @@ struct FocusFlowApp: App {
                 .environmentObject(kingdom)
         }
     }
+}
+
+enum Haptics {
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+    static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        UINotificationFeedbackGenerator().notificationOccurred(type)
+    }
+    static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
 }
 
 // MARK: - Data Models
@@ -280,7 +291,8 @@ class KingdomState: ObservableObject {
         updateKnowledge(topic: topic, wasGroupComplete: groupComplete)
 
         showCelebration = true; showShopHint = true
-        if level > oldLevel { previousLevel = oldLevel; showLevelUp = true }
+        Haptics.notify(.success)
+        if level > oldLevel { previousLevel = oldLevel; showLevelUp = true; Haptics.notify(.warning) }
     }
 
     func updateKnowledge(topic: String, wasGroupComplete: Bool) {
@@ -305,6 +317,7 @@ class KingdomState: ObservableObject {
 
     func purchaseBuilding(type: BuildingType) {
         guard coins >= type.cost else { return }
+        Haptics.impact(.heavy)
         coins -= type.cost; buildingCount += 1
         let zoneBuildings = buildingsInZone(type.category)
         let idx = zoneBuildings.count
@@ -317,7 +330,7 @@ class KingdomState: ObservableObject {
         }
     }
 
-    func collectEconomyIncome() { guard economyIncome > 0 else { return }; coins += economyIncome }
+    func collectEconomyIncome() { guard economyIncome > 0 else { return }; Haptics.impact(.light); coins += economyIncome }
     func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
     func buildingsOfType(_ type: BuildingType) -> Int { buildings.filter { $0.type == type }.count }
 
@@ -331,12 +344,50 @@ class KingdomState: ObservableObject {
     }
 
     func loadDemoTask() {
-        let g = UUID()
+        let g1 = UUID()
+        let completedTasks: [(String, UUID)] = [
+            ("Review fundamental biology concepts", g1), ("Create flashcards for key terms", g1),
+            ("Practice with past exam questions", g1), ("Summarize each chapter", g1)
+        ]
+        groupTopics[g1] = "Biology"
+        for (title, gid) in completedTasks {
+            let t = TaskPiece(title: title, minutes: 25, completed: true, groupID: gid)
+            tasks.append(t)
+            totalFocusMinutes += 25
+        }
+        completedGroups.insert(g1)
+
+        let g2 = UUID()
+        groupTopics[g2] = "Statistics"
         addTasks([
-            TaskPiece(title: "Review core concepts", minutes: 25, groupID: g),
-            TaskPiece(title: "Practice with examples", minutes: 25, groupID: g),
-            TaskPiece(title: "Test your understanding", minutes: 25, groupID: g)
-        ], groupID: g, topic: "Core Study Skills")
+            TaskPiece(title: "Study probability distributions", minutes: 25, groupID: g2),
+            TaskPiece(title: "Practice hypothesis testing", minutes: 25, groupID: g2),
+            TaskPiece(title: "Work through regression problems", minutes: 25, groupID: g2)
+        ], groupID: g2, topic: "Statistics")
+
+        coins = 120; focusStreak = 4; buildingCount = 4
+
+        let demoBuildings: [(BuildingType, Int, Int)] = [
+            (.cottage, 0, 0), (.watchtower, 0, 0), (.marketStall, 0, 0), (.library, 0, 0)
+        ]
+        for (type, _, _) in demoBuildings {
+            let zoneCount = buildingsInZone(type.category).count
+            let b = KingdomBuilding(type: type, col: zoneCount % 4, row: zoneCount / 4,
+                jitterX: CGFloat.random(in: -0.01...0.01), jitterY: CGFloat.random(in: -0.005...0.005))
+            var placed = b; placed.scale = 1.0
+            buildings.append(placed)
+        }
+
+        taskHistory = [
+            TaskHistoryEntry(title: "Review fundamental biology concepts", topic: "Biology", completedAt: Date().addingTimeInterval(-7200), coinsEarned: 10),
+            TaskHistoryEntry(title: "Create flashcards for key terms", topic: "Biology", completedAt: Date().addingTimeInterval(-5400), coinsEarned: 10),
+            TaskHistoryEntry(title: "Practice with past exam questions", topic: "Biology", completedAt: Date().addingTimeInterval(-3600), coinsEarned: 10),
+            TaskHistoryEntry(title: "Summarize each chapter", topic: "Biology", completedAt: Date().addingTimeInterval(-1800), coinsEarned: 60, wasGroupComplete: true),
+        ]
+        knowledgeMap = [
+            KnowledgeEntry(topic: "Biology", tasksCompleted: 4, quizScore: 80, lastStudied: Date().addingTimeInterval(-1800), masteryLevel: 2),
+            KnowledgeEntry(topic: "Statistics", tasksCompleted: 0, masteryLevel: 0),
+        ]
     }
 }
 
@@ -853,7 +904,8 @@ struct LevelProgressBar: View {
         .onAppear { withAnimation(.spring(response: 1.0, dampingFraction: 0.8).delay(0.3)) { animatedProgress = kingdom.xpProgress } }
         .onChange(of: kingdom.totalXP) { withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) { animatedProgress = kingdom.xpProgress } }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Level \(kingdom.level), \(kingdom.kingdomTitle)")
+        .accessibilityLabel("Level \(kingdom.level), \(kingdom.kingdomTitle), \(kingdom.totalXP) experience points")
+        .accessibilityValue("\(Int(kingdom.xpProgress * 100)) percent to next level")
     }
 }
 
@@ -861,6 +913,7 @@ struct LevelProgressBar: View {
 
 struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var skyColors: [Color] {
         switch kingdom.level {
         case 1: return [Color(red:0.98,green:0.7,blue:0.5), Color(red:0.55,green:0.75,blue:0.95)]
@@ -902,12 +955,14 @@ struct KingdomView: View {
                 LinearGradient(colors: skyColors, startPoint: .top, endPoint: .bottom)
                     .animation(.easeInOut(duration: 1.5), value: kingdom.level)
 
-                if kingdom.level >= 6 {
+                if kingdom.level >= 6 && !reduceMotion {
                     ForEach(0..<8, id: \.self) { i in SparkleView(x: CGFloat.random(in: 0...w), y: CGFloat.random(in: 0...(h*0.35)), delay: Double(i)*0.3) }
                 }
 
-                FloatingCloud(width: 80, height: 30, startX: -80, y: h*0.1, speed: 28, containerWidth: w)
-                FloatingCloud(width: 110, height: 40, startX: -180, y: h*0.18, speed: 38, containerWidth: w)
+                if !reduceMotion {
+                    FloatingCloud(width: 80, height: 30, startX: -80, y: h*0.1, speed: 28, containerWidth: w)
+                    FloatingCloud(width: 110, height: 40, startX: -180, y: h*0.18, speed: 38, containerWidth: w)
+                }
 
                 MountainRange()
                     .fill(LinearGradient(colors: [Color(red:0.35,green:0.45,blue:0.55).opacity(0.5), Color(red:0.25,green:0.35,blue:0.45).opacity(0.3)], startPoint: .top, endPoint: .bottom))
@@ -960,6 +1015,8 @@ struct KingdomView: View {
                             }
                         }
                         .scaleEffect(building.scale).position(pos)
+                        .accessibilityLabel("\(building.type.name) in \(cat.name) zone")
+                        .accessibilityHint("Tap to explore this building's interior")
                     }
                 }
 
@@ -1223,6 +1280,99 @@ struct RecentActivitySection: View {
     }
 }
 
+// MARK: - Swift Charts Visualizations
+
+struct DailyActivityData: Identifiable {
+    let id = UUID(); let day: String; let count: Int; let coins: Int
+}
+
+struct DailyActivityChart: View {
+    let history: [TaskHistoryEntry]
+    private var chartData: [DailyActivityData] {
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return (-6...0).map { offset in
+            let date = cal.date(byAdding: .day, value: offset, to: Date())!
+            let dayTasks = history.filter { cal.isDate($0.completedAt, inSameDayAs: date) }
+            return DailyActivityData(day: formatter.string(from: date), count: dayTasks.count,
+                                     coins: dayTasks.reduce(0) { $0 + $1.coinsEarned })
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.bar.fill").foregroundColor(.blue)
+                Text("7-Day Activity").font(.system(.headline, design: .rounded))
+                Spacer()
+            }
+            Chart(chartData) { item in
+                BarMark(x: .value("Day", item.day), y: .value("Tasks", item.count))
+                    .foregroundStyle(
+                        LinearGradient(colors: [.blue, .purple], startPoint: .bottom, endPoint: .top)
+                    )
+                    .cornerRadius(6)
+                    .annotation(position: .top) {
+                        if item.count > 0 {
+                            Text("\(item.count)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.blue)
+                        }
+                    }
+            }
+            .chartYAxis { AxisMarks(position: .leading) { value in
+                AxisGridLine().foregroundStyle(.gray.opacity(0.2))
+                AxisValueLabel().font(.system(size: 10, design: .rounded))
+            } }
+            .chartXAxis { AxisMarks { value in
+                AxisValueLabel().font(.system(size: 11, weight: .medium, design: .rounded))
+            } }
+            .frame(height: 160)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Weekly activity chart showing tasks completed each day")
+        }
+        .padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
+struct KnowledgeMasteryChart: View {
+    let knowledge: [KnowledgeEntry]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "brain.head.profile").foregroundColor(.purple)
+                Text("Mastery Overview").font(.system(.headline, design: .rounded))
+                Spacer()
+            }
+            Chart(knowledge.prefix(8)) { k in
+                BarMark(x: .value("Level", k.masteryLevel), y: .value("Topic", k.topic))
+                    .foregroundStyle(
+                        LinearGradient(colors: [k.masteryColor, k.masteryColor.opacity(0.5)],
+                                       startPoint: .leading, endPoint: .trailing)
+                    )
+                    .cornerRadius(6)
+                    .annotation(position: .trailing) {
+                        Text(k.masteryLabel)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(k.masteryColor)
+                    }
+            }
+            .chartXScale(domain: 0...4)
+            .chartXAxis { AxisMarks(values: [0, 1, 2, 3, 4]) { value in
+                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
+                AxisValueLabel().font(.system(size: 10, design: .rounded))
+            } }
+            .chartYAxis { AxisMarks { AxisValueLabel().font(.system(size: 11, weight: .medium, design: .rounded)) } }
+            .frame(height: CGFloat(max(knowledge.prefix(8).count, 1)) * 40 + 20)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Knowledge mastery chart showing progress across topics")
+        }
+        .padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+    }
+}
+
 // MARK: - Activity & Knowledge Hub
 
 struct ActivityHubSheet: View {
@@ -1233,12 +1383,19 @@ struct ActivityHubSheet: View {
                 VStack(spacing: 20) {
                     ActivitySummaryCard(total: kingdom.taskHistory.count, today: kingdom.todayTaskCount,
                                         coins: kingdom.totalCoinsEarned, streak: kingdom.focusStreak)
-                    if !kingdom.knowledgeMap.isEmpty { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
+
+                    DailyActivityChart(history: kingdom.taskHistory)
+
+                    if !kingdom.knowledgeMap.isEmpty {
+                        KnowledgeMasteryChart(knowledge: kingdom.knowledgeMap)
+                        KnowledgeSection(knowledge: kingdom.knowledgeMap)
+                    }
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text("All Completed Tasks").font(.system(.headline, design: .rounded))
                         if kingdom.taskHistory.isEmpty {
-                            Text("Complete focus sessions to build your history").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 16)
+                            Text("Complete focus sessions to build your history")
+                                .font(.subheadline).foregroundColor(.secondary).padding(.vertical, 16)
                         } else {
                             ForEach(kingdom.taskHistory.reversed()) { entry in
                                 HStack(spacing: 12) {
@@ -1274,7 +1431,7 @@ struct ActivitySummaryCard: View {
     let total: Int; let today: Int; let coins: Int; let streak: Int
     var body: some View {
         VStack(spacing: 16) {
-            Text("📊").font(.system(size: 48))
+            Text("📊").font(.system(size: 48)).accessibilityHidden(true)
             HStack(spacing: 0) {
                 VStack(spacing: 4) { Text("\(total)").font(.system(.title2, design: .rounded)).bold(); Text("Total").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
                 VStack(spacing: 4) { Text("\(today)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.green); Text("Today").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
@@ -1282,6 +1439,8 @@ struct ActivitySummaryCard: View {
                 VStack(spacing: 4) { Text("🔥\(streak)").font(.system(.title2, design: .rounded)).bold().foregroundColor(.red); Text("Streak").font(.caption2).foregroundColor(.secondary) }.frame(maxWidth: .infinity)
             }
         }.padding(20).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(total) total tasks, \(today) today, \(coins) coins earned, \(streak) day streak")
     }
 }
 
@@ -1332,6 +1491,8 @@ struct HeaderStats: View {
                 .frame(maxWidth: 70).padding(.vertical, 10)
                 .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: .orange.opacity(0.2), radius: 8, y: 4)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Focus streak: \(kingdom.focusStreak) sessions")
             }
         }
     }
@@ -1451,6 +1612,9 @@ struct TaskRowView: View {
         .shadow(color: .black.opacity(0.06), radius: 10, y: 5)
         .scaleEffect(appeared ? 1 : 0.95).opacity(appeared ? 1 : 0)
         .onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.06)) { appeared = true } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task: \(task.title), \(task.minutes) minutes")
+        .accessibilityHint("Double tap to start focus timer. Swipe right for more actions.")
         .alert("Rename Task", isPresented: $isEditing) {
             TextField("Task name", text: $editText)
             Button("Save") { if !editText.isEmpty { kingdom.renameTask(id: task.id, newTitle: editText) } }
@@ -1494,6 +1658,8 @@ struct ActionButtons: View {
                 .background(LinearGradient(colors: [.purple, .blue], startPoint: .leading, endPoint: .trailing))
                 .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .purple.opacity(0.35), radius: 12, y: 6)
             }
+            .accessibilityLabel("Add new task with AI breakdown")
+            .accessibilityHint("Opens AI-powered task analysis to break any learning goal into focused steps")
             Button(action: { showShop = true }) {
                 HStack(spacing: 12) {
                     Image(systemName: "storefront.fill").font(.title3)
@@ -1507,6 +1673,8 @@ struct ActionButtons: View {
                 .background(LinearGradient(colors: [.orange, .yellow], startPoint: .leading, endPoint: .trailing))
                 .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .orange.opacity(0.3), radius: 12, y: 6)
             }
+            .accessibilityLabel("Kingdom shop, \(kingdom.coins) coins available")
+            .accessibilityHint("Browse and purchase buildings for your kingdom")
         }
     }
 }
@@ -1684,6 +1852,7 @@ struct FocusTimerSheet: View {
         }.onDisappear { timer?.invalidate() }
     }
     func toggleTimer() {
+        Haptics.selection()
         isRunning.toggle()
         if isRunning {
             withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) { breatheScale = 1.08 }
@@ -1745,10 +1914,13 @@ struct TimerContent: View {
                     ZStack { Circle().fill(Color.white.opacity(0.15)).frame(width: 72, height: 72)
                         Image(systemName: isRunning ? "pause.fill" : "play.fill").font(.system(size: 28)).foregroundColor(.white) }
                 }
+                .accessibilityLabel(isRunning ? "Pause timer" : "Start timer")
+                .accessibilityHint(isRunning ? "Pauses the focus session" : "Begins the focus countdown")
                 Button(action: onReset) {
                     ZStack { Circle().fill(Color.white.opacity(0.08)).frame(width: 72, height: 72)
                         Image(systemName: "arrow.counterclockwise").font(.system(size: 24)).foregroundColor(.white.opacity(0.7)) }
                 }
+                .accessibilityLabel("Reset timer")
             }
             Spacer()
             Button(action: onClose) {
@@ -1845,6 +2017,7 @@ struct QuizSheet: View {
     }
     func calculateReward() -> Int { groupTasks.count * 50 + (understanding + confidence) * 10 }
     func submitQuiz() {
+        Haptics.notify(.success)
         let reward = calculateReward()
         kingdom.coins += reward; kingdom.completedGroups.insert(groupID)
         kingdom.showShopHint = true
@@ -2171,7 +2344,11 @@ struct ShopBuildingCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .disabled(!canAfford)
+            .accessibilityLabel("Buy \(type.name) for \(type.cost) coins")
+            .accessibilityHint(canAfford ? "Double tap to purchase" : "Not enough coins")
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(type.name), \(type.benefit), costs \(type.cost) coins\(owned > 0 ? ", owned \(owned)" : "")")
     }
 }
 
@@ -2224,6 +2401,7 @@ struct OnboardingStep: View {
 
 struct ContentView: View {
     @EnvironmentObject var kingdom: KingdomState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showTaskInput = false; @State private var showTimer = false
     @State private var showQuiz = false; @State private var showShop = false
     @State private var showActivity = false; @State private var showOnboarding = true
@@ -2262,6 +2440,8 @@ struct ContentView: View {
                                 .background(LinearGradient(colors: [.blue, .cyan], startPoint: .leading, endPoint: .trailing))
                                 .clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .blue.opacity(0.3), radius: 12, y: 6)
                             }
+                            .accessibilityLabel("Activity and Knowledge Hub")
+                            .accessibilityHint("View your study charts, mastery progress, and task history")
                             Spacer().frame(height: 30)
                         }.padding(.horizontal, 18).padding(.top, 10)
                     }
@@ -2269,7 +2449,7 @@ struct ContentView: View {
                         OnboardingOverlay(isVisible: $showOnboarding)
                             .onDisappear { kingdom.hasSeenOnboarding = true; kingdom.loadDemoTask() }
                     }
-                    if kingdom.showCelebration {
+                    if kingdom.showCelebration && !reduceMotion {
                         ConfettiView(count: 30).onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { kingdom.showCelebration = false } }
                     }
                     if kingdom.showLevelUp {
