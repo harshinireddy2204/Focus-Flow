@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 import AVFoundation
 import AudioToolbox
+import Speech
 
 @main
 struct FocusFlowApp: App {
@@ -33,8 +34,21 @@ class AccessibilityAudio: ObservableObject {
 
     @Published var speechEnabled: Bool = false
     @Published var soundCuesEnabled: Bool = true
+    @Published var isListening: Bool = false
+    @Published var voiceTranscript: String = ""
+    @Published var micPermissionGranted: Bool = false
 
     private let synthesizer = AVSpeechSynthesizer()
+    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private let audioEngine = AVAudioEngine()
+
+    init() {
+        if UIAccessibility.isVoiceOverRunning { speechEnabled = true }
+    }
+
+    // MARK: - Text-to-Speech
 
     func speak(_ text: String, priority: Bool = false) {
         guard speechEnabled else { return }
@@ -61,11 +75,81 @@ class AccessibilityAudio: ObservableObject {
     func timerDoneSound() { playSound(1005) }
     func tapSound() { playSound(1104) }
 
+    // MARK: - Voice Input (Speech Recognition)
+
+    func requestMicPermission() {
+        SFSpeechRecognizer.requestAuthorization { status in
+            DispatchQueue.main.async {
+                self.micPermissionGranted = status == .authorized
+            }
+        }
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            DispatchQueue.main.async { if granted { self.micPermissionGranted = true } }
+        }
+    }
+
+    func startListening(onResult: @escaping (String) -> Void) {
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            speak("Voice input is not available on this device.", priority: true)
+            return
+        }
+
+        if audioEngine.isRunning { stopListening(); return }
+
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+        guard let request = recognitionRequest else { return }
+        request.shouldReportPartialResults = true
+        if #available(iOS 13, *) { request.requiresOnDeviceRecognition = true }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch { return }
+
+        let inputNode = audioEngine.inputNode
+        recognitionTask = recognizer.recognitionTask(with: request) { result, error in
+            if let result = result {
+                DispatchQueue.main.async {
+                    self.voiceTranscript = result.bestTranscription.formattedString
+                    onResult(self.voiceTranscript)
+                }
+            }
+            if error != nil || (result?.isFinal ?? false) {
+                self.stopListening()
+            }
+        }
+
+        let format = inputNode.outputFormat(forBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            self.recognitionRequest?.append(buffer)
+        }
+
+        audioEngine.prepare()
+        do {
+            try audioEngine.start()
+            DispatchQueue.main.async { self.isListening = true }
+            speak("Listening. Say your task now.", priority: true)
+        } catch { }
+    }
+
+    func stopListening() {
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
+        recognitionRequest = nil
+        recognitionTask = nil
+        DispatchQueue.main.async { self.isListening = false }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // MARK: - Contextual Announcements
+
     func announceTaskCompletion(task: String, coins: Int, bonus: Int) {
         var msg = "Task complete! \(task). You earned \(coins) coins."
         if bonus > 0 { msg += " Bonus! All tasks done. Plus \(bonus) extra coins!" }
-        speak(msg, priority: true)
-        successSound()
+        speak(msg, priority: true); successSound()
     }
 
     func announceTimerUpdate(seconds: Int) {
@@ -74,18 +158,21 @@ class AccessibilityAudio: ObservableObject {
         else if seconds == 0 { speak("Time is up! Session complete.", priority: true); timerDoneSound() }
     }
 
-    func announceBreakdown(topic: String, count: Int) {
-        speak("Analysis complete. \(count) personalized tasks created for \(topic).", priority: true)
+    func announceBreakdown(topic: String, count: Int, steps: [String]) {
+        var msg = "Analysis complete. \(count) personalized tasks created for \(topic). "
+        for (i, step) in steps.prefix(5).enumerated() {
+            msg += "Step \(i + 1): \(step). "
+        }
+        if steps.count > 5 { msg += "And \(steps.count - 5) more steps." }
+        speak(msg, priority: true)
     }
 
     func announceBuildingPurchase(name: String) {
-        speak("Built a \(name) in your kingdom!", priority: true)
-        buildSound()
+        speak("Built a \(name) in your kingdom!", priority: true); buildSound()
     }
 
     func announceLevelUp(level: Int, title: String) {
-        speak("Level up! You are now level \(level), a \(title)!", priority: true)
-        levelUpSound()
+        speak("Level up! You are now level \(level), a \(title)!", priority: true); levelUpSound()
     }
 
     func announceBuilding(building: String, category: String, benefit: String) {
@@ -94,6 +181,15 @@ class AccessibilityAudio: ObservableObject {
 
     func announceQuizResult(score: Int, coins: Int) {
         speak("Quiz complete! You scored \(score) out of 10 and earned \(coins) coins.", priority: true)
+    }
+
+    func announceScreen(_ name: String, detail: String = "") {
+        let msg = detail.isEmpty ? "Opened \(name)." : "Opened \(name). \(detail)"
+        speak(msg, priority: true)
+    }
+
+    func announceOnboarding() {
+        speak("Welcome to Kingdom Builder! This app turns any learning task into focused sessions that build your own kingdom. You can speak your tasks using the microphone button, or type them. The AI will break them down into steps. Each completed session earns coins you can spend to build houses, shops, libraries, and more. Tap Start Building to begin.", priority: true)
     }
 }
 
@@ -113,11 +209,29 @@ struct AccessibilitySettingsView: View {
                             .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom))
                         Text("Audio Accessibility")
                             .font(.system(.title2, design: .rounded)).bold()
-                        Text("These features help users who are visually impaired or benefit from audio feedback.")
+                        Text("For blind and visually impaired users. Speech turns on automatically when VoiceOver is detected.")
                             .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .listRowBackground(Color.clear)
+                }
+
+                Section("Voice Input") {
+                    HStack(spacing: 14) {
+                        Image(systemName: "mic.circle.fill").font(.system(size: 36))
+                            .foregroundStyle(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Speak Your Tasks").font(.system(.body, design: .rounded)).bold()
+                            Text("Tap the microphone button on the task input screen to speak instead of type. Uses on-device speech recognition — no internet needed.")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    HStack(spacing: 8) {
+                        Circle().fill(audio.micPermissionGranted ? Color.green : Color.orange).frame(width: 10, height: 10)
+                        Text(audio.micPermissionGranted ? "Microphone permission granted" : "Microphone permission needed — tap mic button to allow")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
                 }
 
                 Section("Voice") {
@@ -171,14 +285,20 @@ struct AccessibilitySettingsView: View {
                 }
 
                 Section("What Gets Announced") {
+                    AudioFeatureRow(icon: "hand.wave.fill", color: .pink, title: "Onboarding",
+                                    detail: "Speaks full app introduction on first launch")
+                    AudioFeatureRow(icon: "mic.fill", color: .purple, title: "Voice Input",
+                                    detail: "Speak your task — on-device recognition, no internet")
                     AudioFeatureRow(icon: "brain.head.profile", color: .purple, title: "AI Task Breakdown",
-                                    detail: "Reads the topic and number of tasks created")
+                                    detail: "Reads topic, step count, and each step aloud")
                     AudioFeatureRow(icon: "timer", color: .cyan, title: "Focus Timer",
-                                    detail: "Announces 30s, 10s remaining, and session complete")
+                                    detail: "Announces start, 30s, 10s remaining, and session complete")
                     AudioFeatureRow(icon: "dollarsign.circle.fill", color: .orange, title: "Rewards",
                                     detail: "Announces coins earned and group bonuses")
                     AudioFeatureRow(icon: "building.2.fill", color: .green, title: "Buildings",
-                                    detail: "Reads building name, zone, and benefits when purchased or tapped")
+                                    detail: "Reads building name, zone, and benefits on tap")
+                    AudioFeatureRow(icon: "rectangle.stack.fill", color: .indigo, title: "Screen Navigation",
+                                    detail: "Announces shop, activity hub, and settings on open")
                     AudioFeatureRow(icon: "graduationcap.fill", color: .yellow, title: "Quizzes",
                                     detail: "Announces quiz scores and coin rewards")
                     AudioFeatureRow(icon: "arrow.up.circle.fill", color: .blue, title: "Level Ups",
@@ -1635,6 +1755,9 @@ struct ActivityHubSheet: View {
             .background(LinearGradient(colors: [Color(.systemBackground), Color.blue.opacity(0.03)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
             .navigationTitle("Activity Hub").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { show = false } } }
+            .onAppear {
+                AccessibilityAudio.shared.announceScreen("Activity Hub", detail: "\(kingdom.taskHistory.count) total tasks completed. \(kingdom.knowledgeMap.count) topics studied. \(kingdom.focusStreak) day streak.")
+            }
         }
     }
 }
@@ -1922,7 +2045,7 @@ struct TaskInputSheet: View {
                 if i == 20 {
                     breakdown = TaskAI.breakdownTask(taskInput); isAnalyzing = false
                     let topic = TaskAI.extractTopic(from: taskInput)
-                    AccessibilityAudio.shared.announceBreakdown(topic: topic, count: breakdown.count)
+                    AccessibilityAudio.shared.announceBreakdown(topic: topic, count: breakdown.count, steps: breakdown)
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
                 }
             }
@@ -1936,10 +2059,12 @@ struct TaskInputSheet: View {
 
 struct InputView: View {
     @Binding var taskInput: String; @Binding var isAnalyzing: Bool; @Binding var analysisProgress: Double; let onAnalyze: () -> Void
+    @ObservedObject private var audio = AccessibilityAudio.shared
     let suggestions = ["Study for biology exam", "Learn statistics", "Write research paper", "Learn ML math",
                         "Build a mobile app", "Prepare presentation", "Practice guitar", "Learn Spanish",
                         "Study chemistry", "Research history"]
     @State private var analyzePhase = 0
+    @State private var micPulse = false
     private let analyzeMessages = ["Scanning your task...", "Identifying key learning areas...", "Building your personalized plan...", "Finalizing steps..."]
 
     var body: some View {
@@ -1951,12 +2076,39 @@ struct InputView: View {
             }.accessibilityHidden(true)
             VStack(spacing: 8) {
                 Text("What do you want to focus on?").font(.system(.title2, design: .rounded)).bold().foregroundColor(.primary)
-                Text("Type anything — AI will create your perfect study plan").font(.subheadline).foregroundColor(.secondary)
+                Text("Type or speak — AI will create your perfect study plan").font(.subheadline).foregroundColor(.secondary)
             }.multilineTextAlignment(.center)
-            TextField("e.g., Learn quantum physics, Study for SAT, Practice drawing...", text: $taskInput)
-                .font(.system(.body, design: .rounded)).foregroundColor(.primary).textFieldStyle(.plain)
-                .padding(16).background(Color(.systemBackground)).cornerRadius(14)
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(LinearGradient(colors: [.purple.opacity(0.4), .blue.opacity(0.3)], startPoint: .leading, endPoint: .trailing), lineWidth: 2))
+            HStack(spacing: 12) {
+                TextField("e.g., Learn quantum physics, Study for SAT...", text: $taskInput)
+                    .font(.system(.body, design: .rounded)).foregroundColor(.primary).textFieldStyle(.plain)
+                    .padding(16).background(Color(.systemBackground)).cornerRadius(14)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(LinearGradient(colors: [.purple.opacity(0.4), .blue.opacity(0.3)], startPoint: .leading, endPoint: .trailing), lineWidth: 2))
+                Button(action: toggleVoiceInput) {
+                    ZStack {
+                        Circle()
+                            .fill(audio.isListening
+                                  ? LinearGradient(colors: [.red, .orange], startPoint: .top, endPoint: .bottom)
+                                  : LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 52, height: 52)
+                            .scaleEffect(micPulse ? 1.15 : 1.0)
+                            .shadow(color: audio.isListening ? .red.opacity(0.4) : .purple.opacity(0.3), radius: 8, y: 4)
+                        Image(systemName: audio.isListening ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                    }
+                }
+                .accessibilityLabel(audio.isListening ? "Stop listening" : "Speak your task")
+                .accessibilityHint(audio.isListening ? "Tap to stop voice input" : "Tap to speak what you want to learn")
+            }
+            if audio.isListening {
+                HStack(spacing: 10) {
+                    Circle().fill(Color.red).frame(width: 10, height: 10)
+                        .scaleEffect(micPulse ? 1.3 : 0.8).opacity(micPulse ? 1 : 0.5)
+                    Text("Listening... speak your task now")
+                        .font(.system(.subheadline, design: .rounded)).foregroundColor(.red)
+                }
+                .onAppear { withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) { micPulse = true } }
+                .onDisappear { micPulse = false }
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Try these or type your own:").font(.system(.caption, design: .rounded)).foregroundColor(.secondary).padding(.leading, 4)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1992,6 +2144,24 @@ struct InputView: View {
                     .background(taskInput.isEmpty ? Color.gray.opacity(0.4) : Color.purple)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
             }.disabled(taskInput.isEmpty || isAnalyzing)
+        }
+        .onAppear {
+            audio.requestMicPermission()
+            if audio.speechEnabled {
+                audio.announceScreen("AI Task Breakdown", detail: "Type or tap the microphone to speak what you want to learn.")
+            }
+        }
+        .onDisappear { if audio.isListening { audio.stopListening() } }
+    }
+
+    func toggleVoiceInput() {
+        Haptics.impact(.medium)
+        if audio.isListening {
+            audio.stopListening()
+        } else {
+            audio.startListening { transcript in
+                taskInput = transcript
+            }
         }
     }
 }
@@ -2380,6 +2550,9 @@ struct KingdomShopView: View {
             }
             .navigationTitle("Kingdom Shop").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { show = false } } }
+            .onAppear {
+                AccessibilityAudio.shared.announceScreen("Kingdom Shop", detail: "You have \(kingdom.coins) coins. Browse 5 building categories to grow your kingdom.")
+            }
         }
     }
 
@@ -2607,9 +2780,18 @@ struct OnboardingOverlay: View {
                 }.padding(.horizontal, 30).padding(.bottom, 50)
             }.background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 30)).padding(20).scaleEffect(scale).opacity(opacity)
         }
-        .onAppear { withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { scale = 1.0; opacity = 1.0 } }
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { scale = 1.0; opacity = 1.0 }
+            if UIAccessibility.isVoiceOverRunning {
+                AccessibilityAudio.shared.speechEnabled = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                AccessibilityAudio.shared.announceOnboarding()
+            }
+        }
     }
     func dismiss() {
+        AccessibilityAudio.shared.stopSpeaking()
         withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { scale = 0.9; opacity = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isVisible = false }
     }
@@ -2684,7 +2866,13 @@ struct ContentView: View {
                     }
                     if showOnboarding && !kingdom.hasSeenOnboarding {
                         OnboardingOverlay(isVisible: $showOnboarding)
-                            .onDisappear { kingdom.hasSeenOnboarding = true; kingdom.loadDemoTask() }
+                            .onDisappear {
+                                kingdom.hasSeenOnboarding = true; kingdom.loadDemoTask()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                    AccessibilityAudio.shared.announceScreen("Kingdom Builder",
+                                        detail: "Your kingdom has \(kingdom.buildingCount) buildings and \(kingdom.coins) coins. You have \(kingdom.tasks.filter { !$0.completed }.count) active tasks. Tap Add New Task to speak or type what you want to learn.")
+                                }
+                            }
                     }
                     if kingdom.showCelebration && !reduceMotion {
                         ConfettiView(count: 30).onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { kingdom.showCelebration = false } }

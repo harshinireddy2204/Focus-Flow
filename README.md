@@ -4,7 +4,9 @@ A gamified focus app that turns overwhelming tasks into an interactive kingdom-b
 
 ## What It Does
 
-Students type any task — "study for biology exam", "learn statistics", "practice guitar" — and an **on-device AI engine** breaks it into focused sessions. Each completed session earns coins that players spend in the Kingdom Shop to build their own city with structured districts, interactive buildings, and a growing economy.
+Students type **or speak** any task — "study for biology exam", "learn statistics", "practice guitar" — and an **on-device AI engine** breaks it into focused sessions. Each completed session earns coins that players spend in the Kingdom Shop to build their own city with structured districts, interactive buildings, and a growing economy.
+
+**Designed for everyone** — including blind and visually impaired users who can use the entire app through voice input and text-to-speech, start to finish.
 
 ## Key Features
 
@@ -15,76 +17,68 @@ Students type any task — "study for biology exam", "learn statistics", "practi
 - Editable task names — rename any AI-generated step to fit your needs
 - Manual task addition for quick custom entries
 
+### Voice Input (Speech-to-Text)
+- **Microphone button** on the task input screen — tap and speak your task
+- Uses Apple's `SFSpeechRecognizer` with **on-device recognition** (no internet needed)
+- Real-time transcription — see your words appear as you speak
+- Visual pulse indicator shows when the app is listening
+- Accessible to blind users: announces "Listening... say your task now" when activated
+
 ### Interactive Kingdom Building
 - **5 Building Categories**: Housing, Economy, Culture, Defense, Nature
 - **20 Unique Buildings**: Cottage → Palace, Market Stall → Bank, Library → Academy, Watchtower → Castle, Garden → Lake
-- **Zoned City Layout**: Buildings are organized into districts — defense on the border, commerce and housing in the middle, culture at the center, nature scattered throughout
-- **Tap-to-Enter Interiors**: Tap any building to see inside — view stats, kingdom impact, economy reports, knowledge maps, and activity history
+- **Zoned City Layout**: Districts for defense, commerce, housing, culture, and nature
+- **Tap-to-Enter Interiors**: Tap any building to see inside with stats, reports, and knowledge maps
+
+### Full Audio Accessibility (Blind User Support)
+- **Auto-detects VoiceOver** — speech turns on automatically when VoiceOver is running
+- **Spoken onboarding** — the app introduces itself aloud on first launch
+- **Screen announcements** — every sheet (shop, activity hub, settings, buildings) announces its content on open
+- **Task breakdown read aloud** — AI reads the topic, step count, and every step
+- **Timer voice updates** — announces start, 30 seconds, 10 seconds, and completion
+- **Rewards announced** — coins earned, group bonuses, level-ups all spoken
+- **Building info spoken** — building name, zone, and benefit read when tapped
+- **Sound cues** — distinct `SystemSoundID` sounds for coins, completions, building, and level-ups
+- **Accessibility Settings panel** — toggle speech and sounds, test each sound, preview the voice
 
 ### Coin Economy
 - **+10 coins** per completed focus session
 - **+50 bonus coins** for completing all tasks in a group
 - Quiz rewards scale with understanding and confidence scores
 - Economy buildings generate **passive income** you can collect
-- Spend coins strategically across 5 categories to shape your kingdom
 
 ### Knowledge Memory System
-- Tracks every topic you study with **mastery levels** (Beginner → Expert)
-- Quiz scores stored per topic and contribute to mastery progression
-- Knowledge Map viewable inside Culture buildings and the Activity Hub
-- Topics carry across sessions — the app remembers what you've learned
-
-### Audio Accessibility (Text-to-Speech + Sound Cues)
-- **AVSpeechSynthesizer** reads all key content aloud for visually impaired users
-- Announces: AI task breakdowns, timer countdowns (30s, 10s, 0s), task completions with coin rewards, building purchases with zone info, quiz results, and level-ups
-- **SystemSoundID** audio cues: distinct sounds for coins, completions, building placement, and level progression
-- Dedicated **Accessibility Settings panel** with toggles for speech and sound, test buttons for each sound, and a full voice preview
-- Designed for blind and visually impaired users — every screen event has an audio equivalent
+- Tracks every topic with **mastery levels** (Beginner → Expert)
+- Quiz scores stored per topic and contribute to mastery
+- Knowledge Map in Culture buildings and Activity Hub
 
 ### Swift Charts Visualizations
-- **7-Day Activity Bar Chart**: gradient-filled bars showing daily task completions with annotations
-- **Knowledge Mastery Chart**: horizontal bar chart mapping every studied topic to its mastery level
-- Built with Apple's native `Charts` framework for polished, accessible data visualization
+- **7-Day Activity Bar Chart** with gradient fills and annotations
+- **Knowledge Mastery Chart** mapping topics to mastery levels
+- Built with Apple's native `Charts` framework
 
 ### Haptic Feedback
-- Task completion, building purchase, coin collection, level-up, quiz submission, and timer controls all trigger tactile feedback
-- Uses `UIImpactFeedbackGenerator`, `UINotificationFeedbackGenerator`, and `UISelectionFeedbackGenerator` for varied intensities
+- Tactile feedback on task complete, building purchase, coin collection, level-up, quiz, and timer
 
-### Full Accessibility
-- **VoiceOver**: every interactive element has `accessibilityLabel` and `accessibilityHint`
-- **Text-to-Speech**: full `AVSpeechSynthesizer` integration with voice controls
-- **Sound Cues**: `AudioToolbox` system sounds for key interactions
-- **Reduce Motion**: confetti, floating clouds, and sparkle animations suppressed when system Reduce Motion is on
-- **Dynamic Type**: stat cards, task rows, and navigation use system font scaling
-- Combined accessibility elements for streamlined VoiceOver navigation
-
-### Focus Shield (Anti-Distraction Visual)
-- Animated shield visualization during focus sessions
-- Distraction emojis (📱💬🎮📺🔔📧) are repelled by the shield
-- Shield intensity grows as the session progresses
-
-### Activity & Knowledge Hub
-- Swift Charts 7-day activity overview and mastery visualization
-- Full history of every completed task with timestamps and coins
-- Knowledge Map with mastery levels across all studied topics
-- Summary stats: total sessions, today's count, coins earned, streak
-
-### Rich Demo State
-- App launches with pre-built kingdom (4 buildings across zones), completed Biology tasks, an active Statistics task group, 120 coins, knowledge entries, and full task history — judges see the full experience within seconds
+### Accessibility Summary
+- **Blind users**: Voice input + full text-to-speech + VoiceOver labels on every element
+- **Low-vision**: Dynamic Type support, high-contrast gradients
+- **Motion-sensitive**: Reduce Motion suppresses all decorative animations
+- **Deaf users**: All information is visual — no audio-only content
 
 ### Kingdom Progression
 Settlement → Hamlet → Village → Town → Borough → City → Metropolis → Capital → Empire → Legendary Realm
 
 ## Tech Stack
 
-- **SwiftUI** — entire UI, animations, and state management
-- **Swift Charts** — native data visualizations for activity and mastery tracking
-- **AVFoundation** — `AVSpeechSynthesizer` for text-to-speech accessibility
-- **AudioToolbox** — `SystemSoundID` for interaction sound cues
-- **UIKit Haptics** — tactile feedback across all key interactions
+- **SwiftUI** — UI, animations, state management
+- **Swift Charts** — native data visualizations
+- **AVFoundation** — `AVSpeechSynthesizer` for text-to-speech
+- **Speech** — `SFSpeechRecognizer` for on-device voice input
+- **AudioToolbox** — `SystemSoundID` for interaction sounds
+- **UIKit** — Haptic feedback generators + `UIAccessibility` detection
 - **No external dependencies** — runs fully offline
-- **No assets required** — all visuals use SF Symbols, emojis, and SwiftUI shapes/gradients
-- **Single file architecture** — `KingdomBuilder.swift` contains the complete app
+- **Single file architecture** — `KingdomBuilder.swift`
 
 ## How to Run
 
@@ -93,12 +87,6 @@ Settlement → Hamlet → Village → Town → Borough → City → Metropolis �
 2. Create a new App project
 3. Replace the default code with `KingdomBuilder.swift`
 4. Tap **Run**
-
-### On Mac (Swift Playgrounds)
-1. Open **Swift Playgrounds** on your Mac
-2. Create a new App project
-3. Replace the default code with `KingdomBuilder.swift`
-4. Click **Run**
 
 ### On Mac (Xcode)
 1. Open **Xcode** and create a new App Playground (`.swiftpm`)
@@ -113,72 +101,67 @@ KingdomBuilder.swift
 ├── Haptics Engine (UIKit tactile feedback)
 ├── Audio Accessibility Engine (AccessibilityAudio)
 │   ├── AVSpeechSynthesizer (text-to-speech)
-│   ├── AudioToolbox SystemSoundID (audio cues)
-│   └── Context-aware announcements (timer, tasks, buildings, quizzes)
+│   ├── SFSpeechRecognizer (voice-to-text input)
+│   ├── AudioToolbox SystemSoundID (sound cues)
+│   ├── VoiceOver auto-detection
+│   └── Context-aware screen announcements
 ├── Accessibility Settings View
-│   ├── Speech toggle + voice test
-│   ├── Sound cue toggles + individual sound tests
-│   └── Feature explanation list
+│   ├── Speech & sound toggles
+│   ├── Voice input info + permission status
+│   └── Sound test buttons + voice preview
 ├── Data Models
 │   ├── TaskPiece, KingdomBuilding, BuildingType
-│   ├── ShopCategory (Housing/Economy/Culture/Defense/Nature)
-│   ├── TaskHistoryEntry, KnowledgeEntry
+│   ├── ShopCategory, TaskHistoryEntry, KnowledgeEntry
 │   └── ConfettiParticle, DailyActivityData
 ├── State Management (KingdomState)
-│   ├── Kingdom Stats, XP/Level System
-│   ├── AI City Advisor
+│   ├── Kingdom Stats, XP/Level, AI Advisor
 │   ├── Task History & Knowledge Memory
-│   ├── Rich Demo State (pre-loaded buildings, history, knowledge)
-│   └── Zone-based Building Placement
+│   └── Rich Demo State + Zone-based Placement
 ├── AI Task Breakdown Engine (TaskAI)
-│   ├── 15+ Domain-Specific Breakdowns
-│   ├── Action Detection (10 action types)
-│   ├── Topic Extraction (NLP stop-word removal)
+│   ├── 15+ Domain Breakdowns
+│   ├── Action Detection + Topic Extraction
 │   └── Dynamic Step Generation
-├── Swift Charts Visualizations
-│   ├── DailyActivityChart (7-day bar chart)
-│   └── KnowledgeMasteryChart (horizontal mastery bars)
-├── Visual Components
-│   ├── Custom Shapes (Mountains, Hills, Roads)
-│   ├── Animations (Confetti, Clouds, Sparkles, Shield)
-│   └── Focus Shield (Anti-Distraction)
-├── Kingdom View (Zoned District Layout + Reduce Motion)
-├── Building Interior View (Tap-to-Enter + Audio Announce)
+├── Swift Charts (Activity + Mastery)
+├── Kingdom View (Zoned Districts + Reduce Motion)
+├── Building Interior (Tap-to-Enter + Audio)
 ├── Activity & Knowledge Hub (Charts + History)
-├── Kingdom Shop (5-Category Store + Haptics + Audio)
-├── Focus Timer with Shield + Haptics + Voice Countdown
-├── Quiz System with Knowledge Memory + Audio Results
-├── Accessibility (VoiceOver, Reduce Motion, Dynamic Type, Speech, Sound)
-└── Onboarding
+├── Kingdom Shop (5 Categories + Audio)
+├── Focus Timer (Shield + Voice Countdown)
+├── Quiz System (Knowledge Memory + Audio)
+└── Onboarding (Spoken Introduction)
 ```
 
 ## What Makes It Different
 
 | Existing Apps | Kingdom Builder |
 |---|---|
-| Forest: tree grows passively | You **choose** what to build and where |
+| Forest: passive tree growth | You **choose** what to build and where |
 | Freedom: blocks websites | Focus Shield **visualizes** defeating distractions |
 | Todoist: plain task lists | AI **breaks down** any topic into study plans |
-| Pomodoro apps: just a timer | Timer earns coins for an **interactive economy** |
-| Habitica: generic RPG quests | Buildings have **real game mechanics** (income, XP boost, streak protection) |
-| Most apps: no data viz | **Swift Charts** show your 7-day activity and mastery progress |
-| Most apps: basic accessibility | **Full VoiceOver, Text-to-Speech, Sound Cues, Reduce Motion** |
-| No focus apps read content aloud | **AVSpeechSynthesizer** announces everything for blind users |
+| Pomodoro: just a timer | Timer earns coins for an **interactive economy** |
+| Habitica: generic RPG | Buildings have **real mechanics** (income, XP, shield) |
+| No focus app has voice input | **Speak your tasks** with on-device recognition |
+| No focus app reads content | **Full text-to-speech** for blind users start to finish |
+| Most apps: basic a11y | **VoiceOver + Speech + Sound + Reduce Motion + Voice Input** |
 
 ## Accessibility Philosophy
 
-Kingdom Builder was designed from the ground up to be usable by everyone:
-- **Blind users**: AVSpeechSynthesizer reads every task breakdown, timer countdown, building detail, coin reward, and level-up aloud. VoiceOver labels and hints on every interactive element.
-- **Low-vision users**: Dynamic Type support, high-contrast gradients, and combined accessibility elements.
-- **Motion-sensitive users**: All decorative animations (confetti, clouds, sparkles) respect the system Reduce Motion setting.
-- **Users who benefit from audio feedback**: Distinct system sounds for coins, task completion, building, and leveling up provide non-visual confirmation.
+Kingdom Builder was designed so that a blind student can use the entire app from opening to building their kingdom, without ever seeing the screen:
+1. **Open the app** → onboarding speaks itself automatically
+2. **Create a task** → tap microphone, speak "learn Spanish", AI reads back the study plan
+3. **Start a timer** → voice announces start, 30s, 10s, and completion
+4. **Earn rewards** → coins and bonuses are spoken aloud
+5. **Build kingdom** → shop announces what's available, purchase confirmation is spoken
+6. **Track progress** → activity hub announces stats and mastery levels
+
+For sighted users, all audio features can be toggled off in the Accessibility Settings.
 
 ## Screenshots
 
 *Three screenshots should be provided showing:*
 1. The main kingdom view with zoned districts and buildings
-2. The AI task breakdown with personalized steps
-3. The Accessibility Settings panel with speech and sound controls
+2. The voice input microphone on the AI task breakdown screen
+3. The Accessibility Settings panel with speech, sound, and voice input controls
 
 ## Author
 
