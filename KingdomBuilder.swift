@@ -1011,25 +1011,25 @@ struct ZoneRoadShape: Shape {
 
 struct BuildingInteriorSheet: View {
     @EnvironmentObject var kingdom: KingdomState
-    @Binding var building: KingdomBuilding?
-    var b: KingdomBuilding { building! }
+    let building: KingdomBuilding
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    InteriorVisual(type: b.type)
-                    BuildingInfoCard(type: b.type, buildingsOfType: kingdom.buildingsOfType(b.type))
-                    BuildingStatsCard(type: b.type, kingdom: kingdom)
-                    if b.type.category == .culture { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
-                    if b.type.category == .economy { EconomySection(income: kingdom.economyIncome) }
-                    if b.type.category == .defense { DefenseSection(shield: kingdom.streakShield, streak: kingdom.focusStreak) }
+                    InteriorVisual(type: building.type)
+                    BuildingInfoCard(type: building.type, buildingsOfType: kingdom.buildingsOfType(building.type))
+                    BuildingStatsCard(type: building.type, kingdom: kingdom)
+                    if building.type.category == .culture { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
+                    if building.type.category == .economy { EconomySection(income: kingdom.economyIncome) }
+                    if building.type.category == .defense { DefenseSection(shield: kingdom.streakShield, streak: kingdom.focusStreak) }
                     RecentActivitySection(history: Array(kingdom.taskHistory.suffix(5).reversed()))
                 }.padding(18)
             }
-            .background(LinearGradient(colors: [Color(.systemBackground), b.type.category.color.opacity(0.05)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
-            .navigationTitle("Inside: \(b.type.name)").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Close") { building = nil } } }
+            .background(LinearGradient(colors: [Color(.systemBackground), building.type.category.color.opacity(0.05)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+            .navigationTitle("Inside: \(building.type.name)").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Close") { dismiss() } } }
         }
     }
 }
@@ -1362,14 +1362,22 @@ struct StatCard: View {
 struct ActiveTasksList: View {
     @EnvironmentObject var kingdom: KingdomState
     @Binding var selectedTask: TaskPiece?; @Binding var showTimer: Bool
+    @State private var showAddTask = false; @State private var newTaskTitle = ""
     var activeTasks: [TaskPiece] { kingdom.tasks.filter { !$0.completed } }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Active Tasks").font(.system(.title3, design: .rounded)).bold().foregroundColor(.primary)
                 Spacer()
-                Text("\(activeTasks.count) remaining").font(.subheadline).foregroundColor(.secondary)
-                    .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Color.secondary.opacity(0.12)))
+                Button(action: { showAddTask = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 14))
+                        Text("Add").font(.system(.subheadline, design: .rounded)).bold()
+                    }.foregroundColor(.purple).padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Color.purple.opacity(0.1)).clipShape(Capsule())
+                }
+                Text("\(activeTasks.count) left").font(.caption).foregroundColor(.secondary)
+                    .padding(.horizontal, 8).padding(.vertical, 4).background(Capsule().fill(Color.secondary.opacity(0.12)))
             }
             if activeTasks.isEmpty { EmptyTasksView() }
             else {
@@ -1378,6 +1386,17 @@ struct ActiveTasksList: View {
                 }
             }
         }
+        .alert("Add a Task", isPresented: $showAddTask) {
+            TextField("What do you need to do?", text: $newTaskTitle)
+            Button("Add") {
+                if !newTaskTitle.isEmpty {
+                    let g = UUID()
+                    kingdom.addTasks([TaskPiece(title: newTaskTitle, minutes: 25, groupID: g)], groupID: g, topic: TaskAI.extractTopic(from: newTaskTitle))
+                    newTaskTitle = ""
+                }
+            }
+            Button("Cancel", role: .cancel) { newTaskTitle = "" }
+        } message: { Text("Manually add a task to your list. It earns coins just like AI tasks.") }
     }
 }
 
@@ -2217,9 +2236,7 @@ struct ContentView: View {
         }
     }
 
-    var showBuildingInterior: Binding<Bool> {
-        Binding(get: { kingdom.selectedBuilding != nil }, set: { if !$0 { kingdom.selectedBuilding = nil } })
-    }
+    
 
     var body: some View {
         GeometryReader { geometry in
@@ -2266,10 +2283,8 @@ struct ContentView: View {
                 .sheet(isPresented: $showQuiz) { if let g = quizGroupID { QuizSheet(show: $showQuiz, groupID: g) } }
                 .sheet(isPresented: $showShop) { KingdomShopView(show: $showShop) }
                 .sheet(isPresented: $showActivity) { ActivityHubSheet(show: $showActivity) }
-                .sheet(isPresented: showBuildingInterior) {
-                    if kingdom.selectedBuilding != nil {
-                        BuildingInteriorSheet(building: $kingdom.selectedBuilding)
-                    }
+                .sheet(item: $kingdom.selectedBuilding) { bld in
+                    BuildingInteriorSheet(building: bld)
                 }
             }.navigationViewStyle(.stack)
         }
