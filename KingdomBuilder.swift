@@ -531,6 +531,7 @@ class KingdomState: ObservableObject {
     var xpBoostPercent: Int { buildings.filter { $0.type.category == .culture }.reduce(0) { $0 + $1.type.benefitValue } }
     var streakShield: Int { buildings.filter { $0.type.category == .defense }.reduce(0) { $0 + $1.type.benefitValue } }
     var beautyScore: Int { buildings.filter { $0.type.category == .nature }.reduce(0) { $0 + $1.type.benefitValue } }
+    var allTasksComplete: Bool { !tasks.isEmpty && tasks.allSatisfy { $0.completed } }
 
     func buildingsInZone(_ cat: ShopCategory) -> [KingdomBuilding] { buildings.filter { $0.type.category == cat } }
 
@@ -1212,6 +1213,9 @@ struct LevelProgressBar: View {
 struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var cameraYaw: Double = 0
+    @State private var cameraPitch: Double = 0
+    @State private var isDraggingCamera = false
     var skyColors: [Color] {
         switch kingdom.level {
         case 1: return [Color(red:0.98,green:0.7,blue:0.5), Color(red:0.55,green:0.75,blue:0.95)]
@@ -1255,6 +1259,18 @@ struct KingdomView: View {
 
                 if kingdom.level >= 6 && !reduceMotion {
                     ForEach(0..<8, id: \.self) { i in SparkleView(x: CGFloat.random(in: 0...w), y: CGFloat.random(in: 0...(h*0.35)), delay: Double(i)*0.3) }
+                }
+
+                if kingdom.allTasksComplete {
+                    LinearGradient(colors: [Color.cyan.opacity(0.18), Color.purple.opacity(0.22)], startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea()
+                    Text("🎉 3D Celebration Mode Unlocked")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.black.opacity(0.22)))
+                        .position(x: w * 0.5, y: h * 0.08)
                 }
 
                 if !reduceMotion {
@@ -1361,8 +1377,41 @@ struct KingdomView: View {
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(
                 LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
-            .rotation3DEffect(.degrees(2), axis: (x: 1, y: 0, z: 0), perspective: 0.3)
+            .rotation3DEffect(.degrees(2 + cameraPitch), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
+            .rotation3DEffect(.degrees(cameraYaw), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+            .gesture(
+                DragGesture(minimumDistance: 3)
+                    .onChanged { value in
+                        guard !reduceMotion else { return }
+                        isDraggingCamera = true
+                        cameraYaw = Double(value.translation.width / 18)
+                        cameraPitch = Double(-value.translation.height / 24)
+                    }
+                    .onEnded { _ in
+                        isDraggingCamera = false
+                        settleCameraForCurrentState(animated: true)
+                    }
+            )
+            .onAppear { settleCameraForCurrentState(animated: false) }
+            .onChange(of: kingdom.allTasksComplete) { _ in
+                guard !isDraggingCamera else { return }
+                settleCameraForCurrentState(animated: true)
+            }
+            .onChange(of: reduceMotion) { _ in
+                settleCameraForCurrentState(animated: true)
+            }
         }
+    }
+
+    private func settleCameraForCurrentState(animated: Bool) {
+        let targetYaw = (kingdom.allTasksComplete && !reduceMotion) ? 3.5 : 0
+        let targetPitch = (kingdom.allTasksComplete && !reduceMotion) ? -1.5 : 0
+        let apply = {
+            cameraYaw = targetYaw
+            cameraPitch = targetPitch
+        }
+        if animated { withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { apply() } }
+        else { apply() }
     }
 }
 
@@ -2510,6 +2559,10 @@ struct KingdomShopView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
                         ShopWalletBar(coins: kingdom.coins, buildings: kingdom.buildingCount)
+                        Text("Build in 3D: buy shops and buildings, then explore your kingdom in immersive view.")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         KingdomStatsBar()
                         ShopAdvisorBanner(tip: kingdom.aiAdvisorTip)
                         if kingdom.economyIncome > 0 {
@@ -2695,6 +2748,10 @@ struct ShopBuildingCard: View {
         VStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.black.opacity(0.16))
+                    .offset(y: 8)
+
+                RoundedRectangle(cornerRadius: 16)
                     .fill(canAfford
                           ? LinearGradient(colors: [type.category.color.opacity(0.1), type.category.color.opacity(0.04)], startPoint: .top, endPoint: .bottom)
                           : LinearGradient(colors: [Color.gray.opacity(0.06), Color.gray.opacity(0.03)], startPoint: .top, endPoint: .bottom))
@@ -2714,6 +2771,7 @@ struct ShopBuildingCard: View {
                 }.padding(.vertical, 14)
             }
             .frame(height: 160)
+            .rotation3DEffect(.degrees(12), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(
                 canAfford ? type.category.color.opacity(0.3) : Color.gray.opacity(0.15), lineWidth: 1.5))
