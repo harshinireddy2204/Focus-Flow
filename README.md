@@ -45,7 +45,7 @@ Students type **or speak** any task — "study for biology exam", "learn statist
 - **+10 coins** per completed focus session
 - **+50 bonus coins** for completing all tasks in a group
 - Quiz rewards scale with understanding and confidence scores
-- Economy buildings generate **passive income** you can collect
+- Economy buildings give a **one-time coin bonus** when collected — each shop/bank pays once, no infinite farming
 
 ### Knowledge Memory System
 - Tracks every topic with **mastery levels** (Beginner → Expert)
@@ -66,8 +66,17 @@ Students type **or speak** any task — "study for biology exam", "learn statist
 - **Motion-sensitive**: Reduce Motion suppresses all decorative animations
 - **Deaf users**: All information is visual — no audio-only content
 
+### People & Citizens
+- **Population** from housing buildings (Cottage +2, House +5, Manor +10, Palace +25)
+- **Citizens** appear in the kingdom view — up to 12 people (🧑👩🧒👴👵) when you have housing
+
+### 3D-Style Kingdom
+- **rotation3DEffect** on all buildings for depth and perspective
+- **Shadow** under each building for a grounded look
+- **Perspective** on the kingdom container for a subtle 3D tilt
+
 ### Kingdom Progression
-Settlement → Hamlet → Village → Town → Borough → City → Metropolis → Capital → Empire → Legendary Realm
+Starts at **Level 1 (Settlement)**. Progress: Settlement → Hamlet → Village → Town → Borough → City → Metropolis → Capital → Empire → Legendary Realm
 
 ## Tech Stack
 

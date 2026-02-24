@@ -376,7 +376,7 @@ enum ShopCategory: String, CaseIterable, Identifiable {
     }
     var description: String {
         switch self {
-        case .housing: return "Grow your population"; case .economy: return "Generate passive income"
+        case .housing: return "Grow your population"; case .economy: return "One-time coin bonus per building"
         case .culture: return "Boost XP earned"; case .defense: return "Protect your streak"; case .nature: return "Beautify your kingdom"
         }
     }
@@ -428,7 +428,7 @@ enum BuildingType: String, CaseIterable, Codable {
     var benefit: String {
         switch self {
         case .cottage: return "+2 population"; case .house: return "+5 population"; case .manor: return "+10 population"; case .palace: return "+25 population"
-        case .marketStall: return "+3 coins/collect"; case .shop: return "+8 coins/collect"; case .tradingPost: return "+15 coins/collect"; case .bank: return "+30 coins/collect"
+        case .marketStall: return "+3 coins (one-time)"; case .shop: return "+8 coins (one-time)"; case .tradingPost: return "+15 coins (one-time)"; case .bank: return "+30 coins (one-time)"
         case .library: return "+5% XP boost"; case .school: return "+10% XP boost"; case .university: return "+20% XP boost"; case .academy: return "+35% XP boost"
         case .watchtower: return "Streak shield (1)"; case .wall: return "Streak shield (2)"; case .fortress: return "Streak shield (3)"; case .castle: return "Streak shield (5)"
         case .garden: return "+5 beauty"; case .park: return "+10 beauty"; case .fountain: return "+20 beauty"; case .lake: return "+40 beauty"
@@ -457,6 +457,7 @@ struct KingdomBuilding: Identifiable, Codable {
     var jitterY: CGFloat
     var scale: CGFloat = 0.0
     var builtAt: Date = Date()
+    var hasCollected: Bool = false  // Economy buildings: one-time collection only
     init(id: UUID = UUID(), type: BuildingType, col: Int, row: Int, jitterX: CGFloat = 0, jitterY: CGFloat = 0) {
         self.id = id; self.type = type; self.col = col; self.row = row; self.jitterX = jitterX; self.jitterY = jitterY
     }
@@ -526,7 +527,7 @@ class KingdomState: ObservableObject {
     // MARK: Kingdom Stats
 
     var population: Int { buildings.filter { $0.type.category == .housing }.reduce(0) { $0 + $1.type.benefitValue } }
-    var economyIncome: Int { buildings.filter { $0.type.category == .economy }.reduce(0) { $0 + $1.type.benefitValue } }
+    var economyIncome: Int { buildings.filter { $0.type.category == .economy && !$0.hasCollected }.reduce(0) { $0 + $1.type.benefitValue } }
     var xpBoostPercent: Int { buildings.filter { $0.type.category == .culture }.reduce(0) { $0 + $1.type.benefitValue } }
     var streakShield: Int { buildings.filter { $0.type.category == .defense }.reduce(0) { $0 + $1.type.benefitValue } }
     var beautyScore: Int { buildings.filter { $0.type.category == .nature }.reduce(0) { $0 + $1.type.benefitValue } }
@@ -570,7 +571,7 @@ class KingdomState: ObservableObject {
         let h = cats[.housing]?.count ?? 0; let e = cats[.economy]?.count ?? 0
         let c = cats[.culture]?.count ?? 0; let d = cats[.defense]?.count ?? 0
         let n = cats[.nature]?.count ?? 0; let t = buildings.count
-        if e == 0 && t >= 1 { return "Build a Market Stall — start earning passive income!" }
+        if e == 0 && t >= 1 { return "Build a Market Stall — collect a one-time coin bonus!" }
         if d == 0 && focusStreak >= 3 { return "Protect your streak! Build a Watchtower on the border." }
         if c == 0 && t >= 3 { return "A Library in the Cultural Quarter will boost XP!" }
         if n == 0 && t >= 4 { return "Citizens want parks! Beautify with a Garden." }
@@ -654,11 +655,15 @@ class KingdomState: ObservableObject {
     }
 
     func collectEconomyIncome() {
-        guard economyIncome > 0 else { return }
+        let amount = economyIncome
+        guard amount > 0 else { return }
         Haptics.impact(.light)
         AccessibilityAudio.shared.coinSound()
-        AccessibilityAudio.shared.speak("Collected \(economyIncome) coins from your economy buildings.")
-        coins += economyIncome
+        AccessibilityAudio.shared.speak("Collected \(amount) coins from your shops. One-time collection — each building pays once.")
+        coins += amount
+        for i in buildings.indices where buildings[i].type.category == .economy && !buildings[i].hasCollected {
+            buildings[i].hasCollected = true
+        }
     }
     func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
     func buildingsOfType(_ type: BuildingType) -> Int { buildings.filter { $0.type == type }.count }
@@ -673,50 +678,14 @@ class KingdomState: ObservableObject {
     }
 
     func loadDemoTask() {
-        let g1 = UUID()
-        let completedTasks: [(String, UUID)] = [
-            ("Review fundamental biology concepts", g1), ("Create flashcards for key terms", g1),
-            ("Practice with past exam questions", g1), ("Summarize each chapter", g1)
-        ]
-        groupTopics[g1] = "Biology"
-        for (title, gid) in completedTasks {
-            let t = TaskPiece(title: title, minutes: 25, completed: true, groupID: gid)
-            tasks.append(t)
-            totalFocusMinutes += 25
-        }
-        completedGroups.insert(g1)
-
-        let g2 = UUID()
-        groupTopics[g2] = "Statistics"
+        coins = 20
+        let g = UUID()
+        groupTopics[g] = "Getting Started"
         addTasks([
-            TaskPiece(title: "Study probability distributions", minutes: 25, groupID: g2),
-            TaskPiece(title: "Practice hypothesis testing", minutes: 25, groupID: g2),
-            TaskPiece(title: "Work through regression problems", minutes: 25, groupID: g2)
-        ], groupID: g2, topic: "Statistics")
-
-        coins = 120; focusStreak = 4; buildingCount = 4
-
-        let demoBuildings: [(BuildingType, Int, Int)] = [
-            (.cottage, 0, 0), (.watchtower, 0, 0), (.marketStall, 0, 0), (.library, 0, 0)
-        ]
-        for (type, _, _) in demoBuildings {
-            let zoneCount = buildingsInZone(type.category).count
-            let b = KingdomBuilding(type: type, col: zoneCount % 4, row: zoneCount / 4,
-                jitterX: CGFloat.random(in: -0.01...0.01), jitterY: CGFloat.random(in: -0.005...0.005))
-            var placed = b; placed.scale = 1.0
-            buildings.append(placed)
-        }
-
-        taskHistory = [
-            TaskHistoryEntry(title: "Review fundamental biology concepts", topic: "Biology", completedAt: Date().addingTimeInterval(-7200), coinsEarned: 10),
-            TaskHistoryEntry(title: "Create flashcards for key terms", topic: "Biology", completedAt: Date().addingTimeInterval(-5400), coinsEarned: 10),
-            TaskHistoryEntry(title: "Practice with past exam questions", topic: "Biology", completedAt: Date().addingTimeInterval(-3600), coinsEarned: 10),
-            TaskHistoryEntry(title: "Summarize each chapter", topic: "Biology", completedAt: Date().addingTimeInterval(-1800), coinsEarned: 60, wasGroupComplete: true),
-        ]
-        knowledgeMap = [
-            KnowledgeEntry(topic: "Biology", tasksCompleted: 4, quizScore: 80, lastStudied: Date().addingTimeInterval(-1800), masteryLevel: 2),
-            KnowledgeEntry(topic: "Statistics", tasksCompleted: 0, masteryLevel: 0),
-        ]
+            TaskPiece(title: "Complete your first focus session", minutes: 25, groupID: g),
+            TaskPiece(title: "Earn coins to build your kingdom", minutes: 25, groupID: g),
+            TaskPiece(title: "Unlock the full experience", minutes: 25, groupID: g)
+        ], groupID: g, topic: "Getting Started")
     }
 }
 
@@ -1333,9 +1302,9 @@ struct KingdomView: View {
                         Button(action: { kingdom.selectedBuilding = building }) {
                             VStack(spacing: 0) {
                                 ZStack {
-                                    Ellipse().fill(Color.black.opacity(0.12)).frame(width: 32, height: 8).offset(y: sz * 0.45)
+                                    Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: sz * 0.5)
                                     Text(building.type.emoji).font(.system(size: sz))
-                                        .shadow(color: .black.opacity(0.3), radius: 2, y: 2)
+                                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
                                 }
                                 Text(building.type.name)
                                     .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
@@ -1344,14 +1313,30 @@ struct KingdomView: View {
                             }
                         }
                         .scaleEffect(building.scale).position(pos)
+                        .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
                         .accessibilityLabel("\(building.type.name) in \(cat.name) zone")
                         .accessibilityHint("Tap to explore this building's interior")
                     }
                 }
 
+                if kingdom.population > 0 {
+                    let pop = min(kingdom.population, 12)
+                    ForEach(0..<pop, id: \.self) { i in
+                        Text(["🧑","👩","🧒","👴","👵"][i % 5]).font(.system(size: 14))
+                            .position(x: w * (0.25 + CGFloat(i % 4) * 0.18), y: h * (0.72 + CGFloat(i / 4) * 0.055))
+                            .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
+                            .accessibilityHidden(true)
+                    }
+                }
+
                 if kingdom.buildings.isEmpty {
                     VStack(spacing: 14) {
-                        ZStack { PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120); Text("🏗️").font(.system(size: 72)) }
+                        ZStack {
+                            PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120)
+                            Text("🏗️").font(.system(size: 72))
+                                .shadow(color: .black.opacity(0.3), radius: 4, y: 4)
+                                .rotation3DEffect(.degrees(-8), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
+                        }
                         Text("Your Kingdom Awaits").font(.system(.title2, design: .rounded)).bold().foregroundColor(.white).shadow(color: .black.opacity(0.3), radius: 4)
                         Text("Earn coins → Buy buildings in the Shop!").font(.subheadline).foregroundColor(.white.opacity(0.9))
                     }.position(x: w*0.5, y: h*0.72)
@@ -1375,7 +1360,8 @@ struct KingdomView: View {
             .clipShape(RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(
                 LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
-            .shadow(color: .black.opacity(0.2), radius: 20, y: 10)
+            .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
+            .rotation3DEffect(.degrees(2), axis: (x: 1, y: 0, z: 0), perspective: 0.3)
         }
     }
 }
@@ -1551,14 +1537,14 @@ struct EconomySection: View {
             HStack { Image(systemName: "chart.line.uptrend.xyaxis").foregroundColor(.green); Text("Economy Report").font(.system(.headline, design: .rounded)); Spacer() }
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Income per collect").font(.caption).foregroundColor(.secondary)
-                    Text("+\(income) coins").font(.system(.title3, design: .rounded)).bold().foregroundColor(.green)
+                    Text(income > 0 ? "Ready to collect (one-time)" : "All collected").font(.caption).foregroundColor(.secondary)
+                    Text(income > 0 ? "+\(income) coins" : "Each shop pays once").font(.system(.title3, design: .rounded)).bold().foregroundColor(income > 0 ? .green : .secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Status").font(.caption).foregroundColor(.secondary)
-                    Text(income > 20 ? "Thriving" : income > 10 ? "Growing" : income > 0 ? "Starting" : "No shops yet")
-                        .font(.subheadline).bold().foregroundColor(income > 10 ? .green : .orange)
+                    Text(income > 0 ? "Collect in Shop" : "Fully collected")
+                        .font(.subheadline).bold().foregroundColor(income > 0 ? .green : .secondary)
                 }
             }
         }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
@@ -2648,8 +2634,8 @@ struct ShopCollectIncomeButton: View {
             HStack(spacing: 12) {
                 Image(systemName: "dollarsign.circle.fill").font(.title3).scaleEffect(pulse ? 1.15 : 1.0)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Collect Economy Income").font(.system(.subheadline, design: .rounded)).bold()
-                    Text("+\(income) coins from your shops & banks").font(.caption)
+                    Text("Collect One-Time Bonus").font(.system(.subheadline, design: .rounded)).bold()
+                    Text("+\(income) coins — each building pays once").font(.caption)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption)
