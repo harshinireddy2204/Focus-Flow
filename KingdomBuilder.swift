@@ -850,8 +850,51 @@ class TaskAI {
         let words = input.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty && !stopWords.contains($0) && $0.count > 1 }
-        let topic = words.joined(separator: " ")
-        return topic.isEmpty ? input : topic
+        let topic = words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return topic.isEmpty ? input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : topic
+    }
+
+    static func displayTopic(from input: String) -> String {
+        let extracted = extractTopic(from: input)
+        let clean = extracted
+            .components(separatedBy: CharacterSet.alphanumerics.union(.whitespaces).inverted)
+            .joined()
+            .replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return "Your Topic" }
+        return clean.capitalized
+    }
+
+    struct InsightPack {
+        let summary: String
+        let whyItMatters: String
+        let milestones: [String]
+    }
+
+    static func insightPack(for input: String, breakdown: [String]) -> InsightPack {
+        let lower = input.lowercased()
+        let action = detectAction(lower)
+        let topic = displayTopic(from: input)
+        let actionLine: String
+        switch action {
+        case .learn: actionLine = "build understanding"
+        case .build: actionLine = "ship something real"
+        case .write: actionLine = "communicate clearly"
+        case .practice: actionLine = "improve through repetition"
+        case .prepare: actionLine = "perform with confidence"
+        case .research: actionLine = "think critically"
+        case .organize: actionLine = "create a reliable system"
+        case .read: actionLine = "retain what matters"
+        case .fix: actionLine = "solve issues systematically"
+        case .memorize: actionLine = "lock in long-term recall"
+        case .generic: actionLine = "make steady progress"
+        }
+        let summary = "Here is your AI learning path for \(topic). Follow these focused tasks to \(actionLine)."
+        let why = "Each completed focus session earns coins so you can unlock more houses, shops, libraries, and defenses in your kingdom."
+        let milestones = Array(breakdown.prefix(3)).enumerated().map { idx, step in
+            "Milestone \(idx + 1): \(step)"
+        }
+        return InsightPack(summary: summary, whyItMatters: why, milestones: milestones)
     }
 
     // MARK: Dynamic step generation based on action + topic
@@ -1319,8 +1362,8 @@ struct KingdomView: View {
                             VStack(spacing: 0) {
                                 ZStack {
                                     Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: sz * 0.5)
-                                    Text(building.type.emoji).font(.system(size: sz))
-                                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
+                                    Mini3DBuildingView(type: building.type, size: sz)
+                                        .shadow(color: .black.opacity(0.35), radius: 3, y: 3)
                                 }
                                 Text(building.type.name)
                                     .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
@@ -1410,7 +1453,7 @@ struct KingdomView: View {
             cameraYaw = targetYaw
             cameraPitch = targetPitch
         }
-        if animated { withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { apply() } }
+        if animated { withAnimation(.spring(response: 0.6, dampingFraction: 0.8), apply) }
         else { apply() }
     }
 }
@@ -1426,6 +1469,110 @@ struct ZoneRoadShape: Shape {
         p.addQuadCurve(to: CGPoint(x: w*0.8, y: h*0.1), control: CGPoint(x: w*0.5, y: h*0.05))
         return p
     }
+}
+
+// MARK: - 3D Building Visual Components
+
+struct Mini3DBuildingView: View {
+    let type: BuildingType
+    var size: CGFloat = 44
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.08)
+                .fill(sideColor)
+                .frame(width: size * 0.72, height: size * 0.5)
+                .offset(x: size * 0.08, y: size * 0.07)
+
+            RoundedRectangle(cornerRadius: size * 0.1)
+                .fill(frontColor)
+                .frame(width: size * 0.72, height: size * 0.52)
+                .overlay(
+                    VStack(spacing: size * 0.06) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(windowColor)
+                            .frame(width: size * 0.45, height: size * 0.09)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(windowColor.opacity(0.9))
+                            .frame(width: size * 0.38, height: size * 0.09)
+                        if type.category != .defense {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(doorColor)
+                                .frame(width: size * 0.14, height: size * 0.18)
+                                .offset(y: size * 0.04)
+                        }
+                    }
+                    .padding(.top, size * 0.06)
+                )
+
+            TriangleRoof()
+                .fill(roofColor)
+                .frame(width: size * 0.82, height: size * 0.32)
+                .offset(y: -size * 0.35)
+
+            if type == .watchtower {
+                Rectangle().fill(roofColor).frame(width: size * 0.08, height: size * 0.45).offset(y: -size * 0.1)
+                Rectangle().fill(frontColor).frame(width: size * 0.32, height: size * 0.12).offset(y: -size * 0.3)
+            }
+        }
+        .frame(width: size, height: size)
+        .rotation3DEffect(.degrees(12), axis: (x: 1, y: -1, z: 0), perspective: 0.5)
+    }
+
+    private var frontColor: Color { type.category.color.opacity(0.95) }
+    private var sideColor: Color { type.category.color.opacity(0.75) }
+    private var roofColor: Color { type.category == .culture ? Color.brown : Color.gray.opacity(0.8) }
+    private var windowColor: Color { Color.white.opacity(0.8) }
+    private var doorColor: Color { Color.black.opacity(0.2) }
+}
+
+struct TriangleRoof: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+struct InteriorScene3D: View {
+    let type: BuildingType
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(LinearGradient(colors: [Color.black.opacity(0.12), Color.clear], startPoint: .top, endPoint: .bottom))
+                .frame(width: 260, height: 150)
+                .offset(y: 20)
+
+            VStack(spacing: 0) {
+                Rectangle().fill(wallColor).frame(height: 95)
+                Rectangle().fill(floorColor).frame(height: 70)
+                    .overlay(Rectangle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+            }
+            .frame(width: 280, height: 165)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .rotation3DEffect(.degrees(12), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
+
+            HStack(spacing: 24) {
+                if type.category == .housing || type.category == .economy {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.brown.opacity(0.7)).frame(width: 64, height: 24)
+                }
+                if type.category == .culture {
+                    RoundedRectangle(cornerRadius: 4).fill(Color.brown.opacity(0.8)).frame(width: 78, height: 42)
+                        .overlay(Rectangle().fill(Color.white.opacity(0.8)).frame(height: 2).offset(y: -8))
+                }
+                if type.category == .defense {
+                    RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.7)).frame(width: 58, height: 52)
+                }
+            }
+            .offset(y: 24)
+        }
+    }
+
+    private var wallColor: Color { type.category.color.opacity(0.18) }
+    private var floorColor: Color { type.category == .culture ? Color.brown.opacity(0.55) : Color.gray.opacity(0.45) }
 }
 
 // MARK: - Building Interior (Tap to Enter)
@@ -1475,9 +1622,8 @@ struct InteriorVisual: View {
                     }.clipShape(RoundedRectangle(cornerRadius: 14)).padding(2)
                 )
 
-            VStack(spacing: 4) {
-                Text(type.emoji).font(.system(size: 70))
-                    .shadow(color: type.category.color.opacity(0.4), radius: 10)
+            VStack(spacing: 8) {
+                InteriorScene3D(type: type)
                 Text(type.name).font(.system(.title3, design: .rounded)).bold().foregroundColor(.primary)
             }
         }
@@ -2111,7 +2257,7 @@ struct InputView: View {
             }.accessibilityHidden(true)
             VStack(spacing: 8) {
                 Text("What do you want to focus on?").font(.system(.title2, design: .rounded)).bold().foregroundColor(.primary)
-                Text("Type or speak — AI will create your perfect study plan").font(.subheadline).foregroundColor(.secondary)
+                Text("Type any learning goal clearly (example: \"Learn SwiftUI layout\") and AI will generate a step-by-step plan. You can still add your own custom tasks anytime.").font(.subheadline).foregroundColor(.secondary)
             }.multilineTextAlignment(.center)
             HStack(spacing: 12) {
                 TextField("e.g., Learn quantum physics, Study for SAT...", text: $taskInput)
@@ -2203,7 +2349,8 @@ struct InputView: View {
 
 struct ResultsView: View {
     let breakdown: [String]; let colors: [Color]; let originalInput: String; let onAddAll: () -> Void
-    private var detectedTopic: String { TaskAI.extractTopic(from: originalInput.lowercased()) }
+    private var detectedTopic: String { TaskAI.displayTopic(from: originalInput) }
+    private var aiInsight: TaskAI.InsightPack { TaskAI.insightPack(for: originalInput, breakdown: breakdown) }
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 12) {
@@ -2218,6 +2365,24 @@ struct ResultsView: View {
                     Spacer()
                 }.padding(.horizontal, 4)
             }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .green.opacity(0.1), radius: 8, y: 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Topic: \(detectedTopic)").font(.system(.headline, design: .rounded)).foregroundColor(.primary)
+                Text(aiInsight.summary).font(.subheadline).foregroundColor(.secondary)
+                Text(aiInsight.whyItMatters).font(.caption).foregroundColor(.purple)
+                ForEach(aiInsight.milestones, id: \.self) { milestone in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill").foregroundColor(.mint).font(.caption)
+                        Text(milestone).font(.caption).foregroundColor(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.purple.opacity(0.12), lineWidth: 1))
+
             ForEach(Array(breakdown.enumerated()), id: \.offset) { i, step in
                 TaskBreakdownRow(number: i+1, title: step, color: colors[i % colors.count], delay: Double(i)*0.08)
             }
@@ -2756,9 +2921,9 @@ struct ShopBuildingCard: View {
                           ? LinearGradient(colors: [type.category.color.opacity(0.1), type.category.color.opacity(0.04)], startPoint: .top, endPoint: .bottom)
                           : LinearGradient(colors: [Color.gray.opacity(0.06), Color.gray.opacity(0.03)], startPoint: .top, endPoint: .bottom))
                 VStack(spacing: 8) {
-                    Text(type.emoji).font(.system(size: 44))
-                        .scaleEffect(isPurchasing ? 1.3 : 1.0)
-                        .opacity(isPurchasing ? 0.5 : 1.0)
+                    Mini3DBuildingView(type: type, size: 54)
+                        .scaleEffect(isPurchasing ? 1.2 : 1.0)
+                        .opacity(isPurchasing ? 0.65 : 1.0)
                     Text(type.name).font(.system(.subheadline, design: .rounded)).bold()
                         .foregroundColor(.primary).lineLimit(1)
                     Text(type.benefit).font(.system(size: 11, design: .rounded))
