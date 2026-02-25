@@ -1365,8 +1365,8 @@ struct KingdomView: View {
                             VStack(spacing: 0) {
                                 ZStack {
                                     Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: sz * 0.5)
-                                    Mini3DBuildingView(type: building.type, size: sz)
-                                        .shadow(color: .black.opacity(0.35), radius: 3, y: 3)
+                                    Text(building.type.emoji).font(.system(size: sz))
+                                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
                                 }
                                 Text(building.type.name)
                                     .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
@@ -1626,7 +1626,10 @@ struct InteriorVisual: View {
                 )
 
             VStack(spacing: 8) {
-                ImmersiveBuildingCard(type: type)
+                Text(type.emoji).font(.system(size: 56))
+                    .shadow(color: type.category.color.opacity(0.35), radius: 8)
+                BuildingLayout2DView(type: type)
+                    .frame(width: 240, height: 90)
                 Text(type.name).font(.system(.title3, design: .rounded)).bold().foregroundColor(.primary)
             }
         }
@@ -1647,6 +1650,65 @@ struct InteriorVisual: View {
         case .culture: return Color(red: 0.6, green: 0.5, blue: 0.65)
         case .defense: return Color(red: 0.6, green: 0.6, blue: 0.65)
         case .nature: return Color(red: 0.4, green: 0.7, blue: 0.4)
+        }
+    }
+}
+
+struct BuildingLayout2DView: View {
+    let type: BuildingType
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.7))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(type.category.color.opacity(0.25), lineWidth: 1.5))
+
+            HStack(spacing: 8) {
+                ForEach(layoutIcons.prefix(4), id: \.self) { icon in
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(type.category.color.opacity(0.12))
+                            .frame(width: 48, height: 34)
+                            .overlay(Text(icon).font(.system(size: 18)))
+                        Capsule().fill(type.category.color.opacity(0.2)).frame(width: 40, height: 4)
+                    }
+                }
+            }
+
+            VStack {
+                HStack {
+                    Text("Layout Preview").font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(type.category.color)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(8)
+        }
+    }
+
+    private var layoutIcons: [String] {
+        switch type {
+        case .cottage: return ["🛏️", "🪑", "🍽️", "🚪"]
+        case .house: return ["🛋️", "🛏️", "🍽️", "🛁"]
+        case .manor: return ["🛋️", "🛏️", "📚", "🍽️"]
+        case .palace: return ["👑", "🛋️", "🛏️", "🏛️"]
+        case .marketStall: return ["🧺", "💵", "📦", "🚪"]
+        case .shop: return ["🛒", "💳", "📦", "🧾"]
+        case .tradingPost: return ["⚖️", "📦", "💰", "🧾"]
+        case .bank: return ["🏦", "💰", "🔒", "📊"]
+        case .library: return ["📚", "🪑", "💡", "🧠"]
+        case .school: return ["📝", "🪑", "📚", "🧑‍🏫"]
+        case .university: return ["🎓", "📚", "🧪", "🧠"]
+        case .academy: return ["🔬", "🧪", "📘", "🧠"]
+        case .watchtower: return ["🔭", "🛡️", "🚩", "🪜"]
+        case .wall: return ["🧱", "🛡️", "🚪", "⚠️"]
+        case .fortress: return ["🏰", "🛡️", "⚔️", "🚩"]
+        case .castle: return ["🏰", "👑", "🛡️", "⚔️"]
+        case .garden: return ["🌿", "🪴", "🪑", "💧"]
+        case .park: return ["🌳", "🛝", "🪑", "🚶"]
+        case .fountain: return ["⛲", "🪑", "🌸", "💧"]
+        case .lake: return ["🌊", "🛶", "🐟", "🌿"]
         }
     }
 }
@@ -2976,9 +3038,9 @@ struct ShopBuildingCard: View {
                           ? LinearGradient(colors: [type.category.color.opacity(0.1), type.category.color.opacity(0.04)], startPoint: .top, endPoint: .bottom)
                           : LinearGradient(colors: [Color.gray.opacity(0.06), Color.gray.opacity(0.03)], startPoint: .top, endPoint: .bottom))
                 VStack(spacing: 8) {
-                    Mini3DBuildingView(type: type, size: 54)
-                        .scaleEffect(isPurchasing ? 1.2 : 1.0)
-                        .opacity(isPurchasing ? 0.65 : 1.0)
+                    Text(type.emoji).font(.system(size: 44))
+                        .scaleEffect(isPurchasing ? 1.3 : 1.0)
+                        .opacity(isPurchasing ? 0.5 : 1.0)
                     Text(type.name).font(.system(.subheadline, design: .rounded)).bold()
                         .foregroundColor(.primary).lineLimit(1)
                     Text(type.benefit).font(.system(size: 11, design: .rounded))
