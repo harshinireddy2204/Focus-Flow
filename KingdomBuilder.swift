@@ -1332,17 +1332,7 @@ struct KingdomView: View {
                         let sz: CGFloat = isLarge ? 44 : 34
 
                         Button(action: { kingdom.selectedBuilding = building }) {
-                            VStack(spacing: 0) {
-                                ZStack {
-                                    Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: sz * 0.5)
-                                    Text(building.type.emoji).font(.system(size: sz))
-                                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
-                                }
-                                Text(building.type.name)
-                                    .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
-                                    .padding(.horizontal, 4).padding(.vertical, 1)
-                                    .background(Capsule().fill(cat.color.opacity(0.7)))
-                            }
+                            KingdomBuildingMarker3D(type: building.type, category: cat, emojiSize: sz)
                         }
                         .scaleEffect(building.scale).position(pos)
                         .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
@@ -1388,6 +1378,11 @@ struct KingdomView: View {
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
                     }
+                    HStack {
+                        Spacer()
+                        DistrictIconLegend2D(kingdom: kingdom)
+                            .padding(.trailing, 10)
+                    }
                     Spacer()
                 }
             }
@@ -1400,6 +1395,75 @@ struct KingdomView: View {
         }
     }
 }
+
+
+struct KingdomBuildingMarker3D: View {
+    let type: BuildingType
+    let category: ShopCategory
+    let emojiSize: CGFloat
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(LinearGradient(colors: [category.color.opacity(0.28), category.color.opacity(0.1)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: emojiSize + 18, height: emojiSize + 12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                    )
+                    .rotation3DEffect(.degrees(-18), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
+
+                Ellipse().fill(Color.black.opacity(0.22)).frame(width: emojiSize + 8, height: 10).offset(y: emojiSize * 0.45)
+
+                Text(type.emoji)
+                    .font(.system(size: emojiSize))
+                    .shadow(color: .black.opacity(0.35), radius: 3, y: 3)
+            }
+
+            Text(type.name)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(category.color.opacity(0.78)))
+        }
+    }
+}
+
+struct DistrictIconLegend2D: View {
+    @ObservedObject var kingdom: KingdomState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("District Icon Map")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.9))
+
+            LazyVGrid(columns: [GridItem(.fixed(18)), GridItem(.fixed(18)), GridItem(.fixed(18))], spacing: 6) {
+                ForEach(ShopCategory.allCases, id: \.rawValue) { category in
+                    let hasAny = !kingdom.buildingsInZone(category).isEmpty
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(category.color.opacity(hasAny ? 0.4 : 0.18))
+                            .frame(width: 18, height: 18)
+                        Image(systemName: category.icon)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(hasAny ? .white : .white.opacity(0.55))
+                    }
+                    .accessibilityLabel("\(category.name) zone icon")
+                }
+            }
+        }
+        .padding(8)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("2D district icon layout")
+    }
+}
+
 
 struct ZoneRoadShape: Shape {
     func path(in rect: CGRect) -> Path {
