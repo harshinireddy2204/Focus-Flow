@@ -3,6 +3,7 @@ import Charts
 import AVFoundation
 import AudioToolbox
 import Speech
+import Foundation
 
 @main
 struct FocusFlowApp: App {
@@ -700,15 +701,20 @@ class TaskAI {
         case learn, build, write, practice, prepare, research, organize, read, fix, memorize, generic
     }
 
-    static func breakdownTask(_ input: String) -> [String] {
+    static func breakdownTask(_ input: String, insights: [WebInsight] = []) -> [String] {
         let raw = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let l = raw.lowercased()
 
-        if let specific = specificDomainBreakdown(l) { return specific }
+        let base: [String]
+        if let specific = specificDomainBreakdown(l) {
+            base = specific
+        } else {
+            let action = detectAction(l)
+            let topic = extractTopic(from: l)
+            base = generateBreakdown(action: action, topic: topic)
+        }
 
-        let action = detectAction(l)
-        let topic = extractTopic(from: l)
-        return generateBreakdown(action: action, topic: topic)
+        return mergeWithWebInsights(base, insights: insights)
     }
 
     // MARK: Specific domains with expert-level steps
@@ -729,6 +735,18 @@ class TaskAI {
                     "Draw and label diagrams from memory", "Summarize each chapter in your own words",
                     "Practice with past biology exam questions", "Explain difficult concepts out loud",
                     "Take a timed practice test under exam conditions"]
+        }
+        if l.contains("statistics") || l.contains("statistical") || l.contains("stats") {
+            return [
+                "Define what statistics is and why data literacy matters",
+                "Descriptive statistics: calculate mean, median, and mode with small datasets",
+                "Descriptive statistics: compute range, variance, and standard deviation",
+                "Learn quartiles and visualize spread using box plots and histograms",
+                "Inferential statistics: population vs sample and sampling bias",
+                "Hypothesis testing basics: null hypothesis, p-value, and significance level",
+                "Correlation and simple linear regression with interpretation",
+                "Mini project: analyze a real dataset and explain findings in plain language"
+            ]
         }
         if l.contains("chemistry") || l.contains("chem") {
             return ["Review the periodic table and element properties", "Study chemical bonding and molecular structures",
@@ -854,6 +872,19 @@ class TaskAI {
     }
 
     // MARK: Dynamic step generation based on action + topic
+
+    private static func mergeWithWebInsights(_ base: [String], insights: [WebInsight]) -> [String] {
+        guard !insights.isEmpty else { return base }
+
+        var merged = base
+        for insight in insights.prefix(2) {
+            let cleaned = insight.snippet.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { continue }
+            let capped = cleaned.count > 120 ? String(cleaned.prefix(117)) + "..." : cleaned
+            merged.append("Web concept check: \(insight.title) — \(capped)")
+        }
+        return Array(merged.prefix(10))
+    }
 
     private static func generateBreakdown(action: TaskAction, topic: String) -> [String] {
         let t = topic
@@ -1212,6 +1243,7 @@ struct LevelProgressBar: View {
 struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var crowdStep = false
     var skyColors: [Color] {
         switch kingdom.level {
         case 1: return [Color(red:0.98,green:0.7,blue:0.5), Color(red:0.55,green:0.75,blue:0.95)]
@@ -1324,6 +1356,8 @@ struct KingdomView: View {
                     ForEach(0..<pop, id: \.self) { i in
                         Text(["🧑","👩","🧒","👴","👵"][i % 5]).font(.system(size: 14))
                             .position(x: w * (0.25 + CGFloat(i % 4) * 0.18), y: h * (0.72 + CGFloat(i / 4) * 0.055))
+                            .offset(y: reduceMotion ? 0 : ((i % 2 == 0 ? -1 : 1) * (crowdStep ? 2 : -2)))
+                            .animation(reduceMotion ? .none : .easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(Double(i) * 0.08), value: crowdStep)
                             .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
                             .accessibilityHidden(true)
                     }
@@ -1362,6 +1396,7 @@ struct KingdomView: View {
                 LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
             .rotation3DEffect(.degrees(2), axis: (x: 1, y: 0, z: 0), perspective: 0.3)
+            .onAppear { crowdStep = true }
         }
     }
 }
@@ -1391,6 +1426,7 @@ struct BuildingInteriorSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
                     InteriorVisual(type: building.type)
+                    InteriorProgressLayoutView(type: building.type, coins: kingdom.coins, level: kingdom.level)
                     BuildingInfoCard(type: building.type, buildingsOfType: kingdom.buildingsOfType(building.type))
                     BuildingStatsCard(type: building.type, kingdom: kingdom)
                     if building.type.category == .culture { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
@@ -1450,6 +1486,54 @@ struct InteriorVisual: View {
         case .defense: return Color(red: 0.6, green: 0.6, blue: 0.65)
         case .nature: return Color(red: 0.4, green: 0.7, blue: 0.4)
         }
+    }
+}
+
+
+struct InteriorProgressLayoutView: View {
+    let type: BuildingType
+    let coins: Int
+    let level: Int
+
+    var tiers: [(String, Int)] {
+        [
+            ("Foundation", 0),
+            ("Furnished Wing", 150),
+            ("Advanced Chamber", 350),
+            ("Master Hall", 700)
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Interior Layout Progress")
+                .font(.system(.headline, design: .rounded)).bold()
+            Text("Your coins unlock richer interiors for \(type.name).")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ForEach(Array(tiers.enumerated()), id: \.offset) { _, tier in
+                let unlocked = coins >= tier.1
+                HStack {
+                    Image(systemName: unlocked ? "checkmark.seal.fill" : "lock.fill")
+                        .foregroundColor(unlocked ? .green : .secondary)
+                    Text(tier.0).font(.system(.subheadline, design: .rounded))
+                    Spacer()
+                    Text(tier.1 == 0 ? "Unlocked" : "\(tier.1) coins")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Kingdom level bonus: Lv \(level) boosts your building prestige.")
+                .font(.caption2)
+                .foregroundColor(type.category.color)
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
     }
 }
 
@@ -2000,6 +2084,42 @@ struct ActionButtons: View {
     }
 }
 
+
+struct WebInsight: Identifiable, Hashable {
+    let id = UUID()
+    let title: String
+    let snippet: String
+    let source: String
+    let url: String
+}
+
+enum WebResearchService {
+    static func fetchInsights(for query: String) async -> [WebInsight] {
+        let topic = TaskAI.extractTopic(from: query)
+        guard let encoded = topic.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://en.wikipedia.org/w/api.php?action=opensearch&search=\(encoded)&limit=3&namespace=0&format=json") else {
+            return []
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [Any], root.count >= 4,
+                  let titles = root[1] as? [String], let snippets = root[2] as? [String], let links = root[3] as? [String] else {
+                return []
+            }
+
+            var insights: [WebInsight] = []
+            for i in 0..<min(titles.count, snippets.count, links.count) {
+                let snippet = snippets[i].isEmpty ? "Read the overview and identify the 3 most important fundamentals." : snippets[i]
+                insights.append(WebInsight(title: titles[i], snippet: snippet, source: "Wikipedia", url: links[i]))
+            }
+            return insights
+        } catch {
+            return []
+        }
+    }
+}
+
 // MARK: - Task Input Sheet
 
 struct TaskInputSheet: View {
@@ -2007,6 +2127,8 @@ struct TaskInputSheet: View {
     @State private var taskInput = ""; @State private var isAnalyzing = false
     @State private var breakdown: [String] = []; @State private var showResults = false
     @State private var analysisProgress: Double = 0
+    @State private var webInsights: [WebInsight] = []
+    @State private var usedWebResearch = false
     let colors: [Color] = [.blue, .purple, .pink, .orange, .green, .cyan, .indigo, .mint]
     var body: some View {
         NavigationView {
@@ -2015,7 +2137,7 @@ struct TaskInputSheet: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         if !showResults { InputView(taskInput: $taskInput, isAnalyzing: $isAnalyzing, analysisProgress: $analysisProgress, onAnalyze: analyzeTask) }
-                        else { ResultsView(breakdown: breakdown, colors: colors, originalInput: taskInput, onAddAll: addAllTasks) }
+                        else { ResultsView(breakdown: breakdown, colors: colors, originalInput: taskInput, insights: webInsights, usedWebResearch: usedWebResearch, onAddAll: addAllTasks) }
                     }.padding(20)
                 }
             }.navigationTitle("AI Task Breakdown").navigationBarTitleDisplayMode(.inline)
@@ -2024,16 +2146,27 @@ struct TaskInputSheet: View {
     }
     func analyzeTask() {
         AccessibilityAudio.shared.speak("Analyzing your task. Please wait.")
-        isAnalyzing = true; analysisProgress = 0
+        isAnalyzing = true
+        analysisProgress = 0
+        usedWebResearch = false
+        webInsights = []
+
         for i in 1...20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.07) {
                 withAnimation { analysisProgress = Double(i) / 20.0 }
-                if i == 20 {
-                    breakdown = TaskAI.breakdownTask(taskInput); isAnalyzing = false
-                    let topic = TaskAI.extractTopic(from: taskInput)
-                    AccessibilityAudio.shared.announceBreakdown(topic: topic, count: breakdown.count, steps: breakdown)
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
-                }
+            }
+        }
+
+        Task {
+            let insights = await WebResearchService.fetchInsights(for: taskInput)
+            await MainActor.run {
+                webInsights = insights
+                usedWebResearch = !insights.isEmpty
+                breakdown = TaskAI.breakdownTask(taskInput, insights: insights)
+                isAnalyzing = false
+                let topic = TaskAI.extractTopic(from: taskInput)
+                AccessibilityAudio.shared.announceBreakdown(topic: topic, count: breakdown.count, steps: breakdown)
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { showResults = true }
             }
         }
     }
@@ -2153,7 +2286,7 @@ struct InputView: View {
 }
 
 struct ResultsView: View {
-    let breakdown: [String]; let colors: [Color]; let originalInput: String; let onAddAll: () -> Void
+    let breakdown: [String]; let colors: [Color]; let originalInput: String; let insights: [WebInsight]; let usedWebResearch: Bool; let onAddAll: () -> Void
     private var detectedTopic: String { TaskAI.extractTopic(from: originalInput.lowercased()) }
     var body: some View {
         VStack(spacing: 18) {
@@ -2171,6 +2304,27 @@ struct ResultsView: View {
             }.padding(16).background(Color(.systemBackground)).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .green.opacity(0.1), radius: 8, y: 4)
             ForEach(Array(breakdown.enumerated()), id: \.offset) { i, step in
                 TaskBreakdownRow(number: i+1, title: step, color: colors[i % colors.count], delay: Double(i)*0.08)
+            }
+            if usedWebResearch {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Web-assisted concepts", systemImage: "globe")
+                        .font(.system(.subheadline, design: .rounded)).bold().foregroundColor(.blue)
+                    ForEach(insights.prefix(3)) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title).font(.system(.subheadline, design: .rounded)).bold()
+                            Text(item.snippet).font(.caption).foregroundColor(.secondary)
+                            Text(item.source).font(.caption2).foregroundColor(.blue)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.blue.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(12)
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .shadow(color: .blue.opacity(0.12), radius: 8, y: 4)
             }
             Button(action: onAddAll) {
                 HStack(spacing: 10) { Image(systemName: "plus.circle.fill"); Text("Add All Tasks") }
