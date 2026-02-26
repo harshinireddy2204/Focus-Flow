@@ -1502,28 +1502,15 @@ struct KingdomView: View {
                         let lvl = kingdom.levelFor(building)
                         let sz: CGFloat = isLarge ? 44 + CGFloat(lvl - 1) * 2 : 34 + CGFloat(lvl - 1)
 
-                        Button(action: { kingdom.selectedBuilding = building }) {
-                            VStack(spacing: 0) {
-                                ZStack {
-                                    Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: sz * 0.5)
-                                    Text(building.type.emoji).font(.system(size: sz))
-                                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
-                                }
-                                Text(building.type.name)
-                                    .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
-                                    .padding(.horizontal, 4).padding(.vertical, 1)
-                                    .background(Capsule().fill(cat.color.opacity(0.7)))
-                                if lvl > 1 {
-                                    Text("Lv.\(lvl)")
-                                        .font(.system(size: 7, weight: .bold, design: .rounded))
-                                        .foregroundColor(.yellow)
-                                }
-                            }
+                        KingdomBuildingMarkerView(
+                            building: building,
+                            category: cat,
+                            size: sz,
+                            level: lvl,
+                            position: pos
+                        ) {
+                            kingdom.selectedBuilding = building
                         }
-                        .scaleEffect(building.scale).position(pos)
-                        .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
-                        .accessibilityLabel("\(building.type.name) in \(cat.name) zone")
-                        .accessibilityHint("Tap to explore this building's interior")
                     }
                 }
 
@@ -1607,6 +1594,41 @@ struct KingdomView: View {
         }
         if animated { withAnimation(.spring(response: 0.6, dampingFraction: 0.8), apply) }
         else { apply() }
+    }
+}
+
+struct KingdomBuildingMarkerView: View {
+    let building: KingdomBuilding
+    let category: ShopCategory
+    let size: CGFloat
+    let level: Int
+    let position: CGPoint
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Ellipse().fill(Color.black.opacity(0.2)).frame(width: 36, height: 10).offset(y: size * 0.5)
+                    Text(building.type.emoji).font(.system(size: size))
+                        .shadow(color: .black.opacity(0.4), radius: 3, y: 3)
+                }
+                Text(building.type.name)
+                    .font(.system(size: 8, weight: .bold, design: .rounded)).foregroundColor(.white)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(category.color.opacity(0.7)))
+                if level > 1 {
+                    Text("Lv.\(level)")
+                        .font(.system(size: 7, weight: .bold, design: .rounded))
+                        .foregroundColor(.yellow)
+                }
+            }
+        }
+        .scaleEffect(building.scale)
+        .position(position)
+        .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
+        .accessibilityLabel("\(building.type.name) in \(category.name) zone")
+        .accessibilityHint("Tap to explore this building's interior")
     }
 }
 
@@ -1862,6 +1884,47 @@ struct BuildingLayout2DView: View {
         case .fountain: return ["⛲", "🪑", "🌸", "💧"]
         case .lake: return ["🌊", "🛶", "🐟", "🌿"]
         }
+    }
+}
+
+struct UpgradeBuildingCard: View {
+    @EnvironmentObject var kingdom: KingdomState
+    let building: KingdomBuilding
+
+    var body: some View {
+        let level = kingdom.levelFor(building)
+        let cost = kingdom.upgradeCost(for: building)
+        let canUpgrade = kingdom.canUpgrade(building)
+
+        return VStack(spacing: 10) {
+            HStack {
+                Text("Building Growth").font(.system(.headline, design: .rounded))
+                Spacer()
+                Text("Lv.\(level)").font(.subheadline).bold().foregroundColor(.purple)
+            }
+            Text("Upgrade to increase benefits and visible kingdom progression.")
+                .font(.caption).foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: { kingdom.upgradeBuilding(building) }) {
+                HStack {
+                    Image(systemName: "arrow.up.circle.fill")
+                    Text(level >= 5 ? "Max Level Reached" : "Upgrade for \(cost) coins")
+                    Spacer()
+                    Text("💰 \(kingdom.coins)").font(.caption)
+                }
+                .foregroundColor(.white)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(level >= 5 ? Color.gray : (canUpgrade ? Color.green : Color.orange))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .disabled(level >= 5 || !canUpgrade)
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
     }
 }
 
