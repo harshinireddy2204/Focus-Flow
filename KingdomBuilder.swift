@@ -3,9 +3,6 @@ import Charts
 import AVFoundation
 import AudioToolbox
 import Speech
-#if canImport(RealityKit)
-import RealityKit
-#endif
 
 @main
 struct FocusFlowApp: App {
@@ -1865,99 +1862,6 @@ struct BuildingLayout2DView: View {
         case .fountain: return ["⛲", "🪑", "🌸", "💧"]
         case .lake: return ["🌊", "🛶", "🐟", "🌿"]
         }
-    }
-}
-
-struct ImmersiveBuildingCard: View {
-    let type: BuildingType
-
-    var body: some View {
-#if os(visionOS) && canImport(RealityKit)
-        RealityView { content, attachments in
-            let root = Entity()
-
-            let floorMesh = MeshResource.generatePlane(width: 0.36, depth: 0.24)
-            let floorMaterial = SimpleMaterial(color: UIColor(type.category.color.opacity(0.16)), isMetallic: false)
-            let floor = ModelEntity(mesh: floorMesh, materials: [floorMaterial])
-            floor.position = [0, -0.08, 0]
-            floor.transform.rotation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-
-            let bodyMesh = MeshResource.generateBox(size: [0.17, 0.1, 0.12], cornerRadius: 0.01)
-            let bodyMaterial = SimpleMaterial(color: UIColor(type.category.color.opacity(0.92)), isMetallic: false)
-            let body = ModelEntity(mesh: bodyMesh, materials: [bodyMaterial])
-            body.position = [0, -0.02, 0]
-
-            let roofMesh = MeshResource.generateBox(size: [0.19, 0.03, 0.14], cornerRadius: 0.008)
-            let roofMaterial = SimpleMaterial(color: .darkGray, roughness: 0.35, isMetallic: false)
-            let roof = ModelEntity(mesh: roofMesh, materials: [roofMaterial])
-            roof.position = [0, 0.05, 0]
-
-            root.addChild(floor)
-            root.addChild(body)
-            root.addChild(roof)
-
-            if let info = attachments.entity(for: "label") {
-                info.position = [0, 0.12, 0.07]
-                root.addChild(info)
-            }
-
-            content.add(root)
-        } attachments: {
-            Attachment(id: "label") {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(type.name).font(.caption).bold()
-                    Text(type.benefit).font(.caption2).foregroundColor(.secondary).lineLimit(1)
-                }
-                .padding(6)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-        }
-        .frame(width: 290, height: 170)
-#else
-        InteriorScene3D(type: type)
-#endif
-    }
-}
-
-struct UpgradeBuildingCard: View {
-    @EnvironmentObject var kingdom: KingdomState
-    let building: KingdomBuilding
-
-    var body: some View {
-        let level = kingdom.levelFor(building)
-        let cost = kingdom.upgradeCost(for: building)
-        let canUpgrade = kingdom.canUpgrade(building)
-
-        return VStack(spacing: 10) {
-            HStack {
-                Text("Building Growth").font(.system(.headline, design: .rounded))
-                Spacer()
-                Text("Lv.\(level)").font(.subheadline).bold().foregroundColor(.purple)
-            }
-            Text("Upgrade to increase benefits and visualize kingdom progress as you complete tasks.")
-                .font(.caption).foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button(action: { kingdom.upgradeBuilding(building) }) {
-                HStack {
-                    Image(systemName: "arrow.up.circle.fill")
-                    Text(level >= 5 ? "Max Level Reached" : "Upgrade for \(cost) coins")
-                    Spacer()
-                    Text("💰 \(kingdom.coins)").font(.caption)
-                }
-                .foregroundColor(.white)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(level >= 5 ? Color.gray : (canUpgrade ? Color.green : Color.orange))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .disabled(level >= 5 || !canUpgrade)
-        }
-        .padding(14)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
     }
 }
 
