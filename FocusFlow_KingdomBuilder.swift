@@ -1128,6 +1128,10 @@ struct BuildingMarker: View {
                 Ellipse().fill(Color.black.opacity(0.18)).frame(width: 38, height: 10).offset(y: 16)
                 markerBody
                     .frame(width: 52, height: 52)
+                Text(type.emoji)
+                    .font(.system(size: 14))
+                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                    .offset(y: -8)
                 if level == .legendary {
                     Image(systemName: "crown.fill").font(.system(size: 9)).foregroundColor(.yellow).offset(x: 15, y: -16)
                 }
