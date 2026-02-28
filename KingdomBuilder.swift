@@ -11,7 +11,7 @@ import RealityKit
 @main
 struct FocusFlowApp: App {
     @StateObject private var kingdom = KingdomState()
-    var body: some Scene {
+    var body: some SwiftUI.Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(kingdom)
