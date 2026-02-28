@@ -1201,82 +1201,186 @@ struct KingdomView: View {
         let rowSpacing = min(0.06, ySpan / CGFloat(max(rows, 1)))
         return CGPoint(x: (zone.xRange.lowerBound + cellW*(CGFloat(col)+0.5) + jx)*w, y: (zone.yRange.lowerBound + CGFloat(row)*rowSpacing + jy)*h)
     }
+    // MARK: - Extracted subviews (fixes "compiler unable to type-check" error)
+
+    @ViewBuilder
+    func zoneLabelLayer(w: CGFloat, h: CGFloat) -> some View {
+        ForEach([ShopCategory.defense, .economy, .housing, .culture], id: \.rawValue) { cat in
+            let zone = zones.first(where: { $0.category == cat })!
+            let catBuildings = kingdom.buildingsInZone(cat)
+            if !catBuildings.isEmpty {
+                let xMid = (zone.xRange.lowerBound + zone.xRange.upperBound) / 2 * w
+                let yPos = zone.yRange.lowerBound * h - 6
+                Text(cat.name)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(cat.color.opacity(0.5)))
+                    .position(x: xMid, y: yPos)
+            }
+        }
+    }
+
+    @ViewBuilder
+    func buildingLayer(w: CGFloat, h: CGFloat) -> some View {
+        let hasActiveTask = kingdom.tasks.contains { !$0.completed }
+        ForEach(ShopCategory.allCases, id: \.rawValue) { cat in
+            let zone = zones.first(where: { $0.category == cat })!
+            let catBuildings = kingdom.buildingsInZone(cat)
+            ForEach(Array(catBuildings.enumerated()), id: \.element.id) { idx, building in
+                let pos = zonePosition(zone: zone, index: idx, total: catBuildings.count,
+                                       w: w, h: h, jx: building.jitterX, jy: building.jitterY)
+                KingdomBuildingButton(
+                    building: building,
+                    category: cat,
+                    ownedCount: kingdom.buildingsOfType(building.type),
+                    hasActiveTask: hasActiveTask,
+                    pos: pos,
+                    onTap: { kingdom.selectedBuilding = building }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    func emptyStateView(w: CGFloat, h: CGFloat) -> some View {
+        if kingdom.buildings.isEmpty {
+            KingdomEmptyState()
+                .position(x: w * 0.5, y: h * 0.72)
+        }
+    }
+
+    @ViewBuilder
+    func hudOverlay() -> some View {
+        VStack {
+            HStack {
+                Text("Tap a building to explore inside")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
+                Spacer()
+                Text(kingdom.kingdomTitle)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
+            }
+            Spacer()
+        }
+    }
+
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width; let h = geo.size.height
+            let w = geo.size.width
+            let h = geo.size.height
             ZStack {
-                ImmersiveLandscapeBackdrop(skyColors: skyColors, width: w, height: h, level: kingdom.level, reduceMotion: reduceMotion, zoomScale: zoomScale)
-                ZoneRoadShape().stroke(Color.yellow.opacity(0.25), style: StrokeStyle(lineWidth: 4, dash: [8,6])).frame(width: w*0.7, height: h*0.28).position(x: w*0.5, y: h*0.76)
-                // Zone labels
-                ForEach([ShopCategory.defense, .economy, .housing, .culture], id: \.rawValue) { cat in
-                    let zone = zones.first(where: { $0.category == cat })!
-                    let catBuildings = kingdom.buildingsInZone(cat)
-                    if !catBuildings.isEmpty {
-                        Text(cat.name).font(.system(size: 9, weight: .bold, design: .rounded)).foregroundColor(.white.opacity(0.8))
-                            .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(cat.color.opacity(0.5)))
-                            .position(x: (zone.xRange.lowerBound + zone.xRange.upperBound)/2*w, y: zone.yRange.lowerBound*h - 6)
-                    }
-                }
-                // Buildings – using BuildingMarker (ENHANCEMENT 2 + 3)
-                ForEach(ShopCategory.allCases, id: \.rawValue) { cat in
-                    let zone = zones.first(where: { $0.category == cat })!
-                    let catBuildings = kingdom.buildingsInZone(cat)
-                    ForEach(Array(catBuildings.enumerated()), id: \.element.id) { idx, building in
-                        let pos = zonePosition(zone: zone, index: idx, total: catBuildings.count, w: w, h: h, jx: building.jitterX, jy: building.jitterY)
-                        Button(action: { kingdom.selectedBuilding = building }) {
-                            BuildingMarker(
-                                type: building.type,
-                                category: cat,
-                                buildingsOwned: kingdom.buildingsOfType(building.type),
-                                isActiveSession: kingdom.tasks.contains { !$0.completed }
-                            )
-                        }
-                        .scaleEffect(building.scale).position(pos)
-                        .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
-                        .accessibilityLabel("\(building.type.name) in \(cat.name) zone")
-                        .accessibilityHint("Tap to explore this building's interior")
-                    }
-                }
-                // Reactive Citizens (ENHANCEMENT 4)
+                ImmersiveLandscapeBackdrop(skyColors: skyColors, width: w, height: h,
+                                           level: kingdom.level, reduceMotion: reduceMotion,
+                                           zoomScale: zoomScale)
+                ZoneRoadShape()
+                    .stroke(Color.yellow.opacity(0.25), style: StrokeStyle(lineWidth: 4, dash: [8, 6]))
+                    .frame(width: w * 0.7, height: h * 0.28)
+                    .position(x: w * 0.5, y: h * 0.76)
+                zoneLabelLayer(w: w, h: h)
+                buildingLayer(w: w, h: h)
                 if kingdom.population > 0 {
                     ReactiveCitizensView(manager: citizenManager, width: w, height: h)
                 }
-                // Empty state
-                if kingdom.buildings.isEmpty {
-                    VStack(spacing: 14) {
-                        ZStack { PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120); Text("🏗️").font(.system(size: 72)).shadow(color: .black.opacity(0.3), radius: 4, y: 4).rotation3DEffect(.degrees(-8), axis: (x: 1, y: 0, z: 0), perspective: 0.4) }
-                        Text("Your Kingdom Awaits").font(.system(.title2, design: .rounded)).bold().foregroundColor(.white).shadow(color: .black.opacity(0.3), radius: 4)
-                        Text("Earn coins → Buy buildings in the Shop!").font(.subheadline).foregroundColor(.white.opacity(0.9))
-                    }.position(x: w*0.5, y: h*0.72)
-                }
-                VStack {
-                    HStack {
-                        Text("Tap a building to explore inside").font(.system(size: 10, design: .rounded)).foregroundColor(.white.opacity(0.6)).padding(.horizontal, 10).padding(.vertical, 5).background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
-                        Spacer()
-                        Text(kingdom.kingdomTitle).font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.white).padding(.horizontal, 12).padding(.vertical, 6).background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
-                    }
-                    Spacer()
-                }
+                emptyStateView(w: w, h: h)
+                hudOverlay()
             }
             .clipShape(RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24).stroke(
+                    LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.1)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2)
+            )
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
             .scaleEffect(zoomScale, anchor: .center)
             .rotation3DEffect(.degrees(cameraPitch), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
             .rotation3DEffect(.degrees(cameraYaw), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
-            .gesture(DragGesture().onChanged { value in cameraYaw = max(-10, min(10, Double(value.translation.width/24))); cameraPitch = max(-4, min(12, 2 - Double(value.translation.height/28))) }.onEnded { _ in withAnimation(.easeOut(duration: 0.3)) { cameraYaw = 0; cameraPitch = 2 } })
-            .simultaneousGesture(MagnificationGesture().onChanged { value in zoomScale = min(2.4, max(0.75, baseZoomScale * value)) }.onEnded { _ in baseZoomScale = zoomScale })
-            .onTapGesture(count: 2) { withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { zoomScale = 1.0; baseZoomScale = 1.0 } }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        cameraYaw = max(-10, min(10, Double(value.translation.width / 24)))
+                        cameraPitch = max(-4, min(12, 2 - Double(value.translation.height / 28)))
+                    }
+                    .onEnded { _ in
+                        withAnimation(.easeOut(duration: 0.3)) { cameraYaw = 0; cameraPitch = 2 }
+                    }
+            )
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in zoomScale = min(2.4, max(0.75, baseZoomScale * value)) }
+                    .onEnded { _ in baseZoomScale = zoomScale }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    zoomScale = 1.0; baseZoomScale = 1.0
+                }
+            }
             .onAppear {
                 citizenManager.setup(population: kingdom.population, width: w, height: h)
                 let growthScale = min(2.0, 1.0 + CGFloat(kingdom.buildings.count) * 0.02)
-                zoomScale = max(zoomScale, growthScale); baseZoomScale = zoomScale
+                zoomScale = max(zoomScale, growthScale)
+                baseZoomScale = zoomScale
             }
-            .onChange(of: kingdom.population) { _ in citizenManager.setup(population: kingdom.population, width: w, height: h) }
-            // React to task completions
+            .onChange(of: kingdom.population) { _ in
+                citizenManager.setup(population: kingdom.population, width: w, height: h)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .taskCompleted)) { _ in
                 citizenManager.onTaskCompleted(width: w)
             }
+        }
+    }
+}
+
+// MARK: - KingdomView Helper Subviews (extracted to fix type-checker timeout)
+
+struct KingdomBuildingButton: View {
+    @EnvironmentObject var kingdom: KingdomState
+    let building: KingdomBuilding
+    let category: ShopCategory
+    let ownedCount: Int
+    let hasActiveTask: Bool
+    let pos: CGPoint
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            BuildingMarker(
+                type: building.type,
+                category: category,
+                buildingsOwned: ownedCount,
+                isActiveSession: hasActiveTask
+            )
+        }
+        .scaleEffect(building.scale)
+        .position(pos)
+        .rotation3DEffect(.degrees(-12), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
+        .accessibilityLabel("\(building.type.name) in \(category.name) zone")
+        .accessibilityHint("Tap to explore this building's interior")
+    }
+}
+
+struct KingdomEmptyState: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                PulseRing(color: .white.opacity(0.5)).frame(width: 120, height: 120)
+                Text("🏗️")
+                    .font(.system(size: 72))
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 4)
+                    .rotation3DEffect(.degrees(-8), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
+            }
+            Text("Your Kingdom Awaits")
+                .font(.system(.title2, design: .rounded)).bold()
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.3), radius: 4)
+            Text("Earn coins → Buy buildings in the Shop!")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.9))
         }
     }
 }
