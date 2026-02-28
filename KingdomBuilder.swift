@@ -7,6 +7,9 @@ import Foundation
 #if canImport(RealityKit)
 import RealityKit
 #endif
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 @main
 struct FocusFlowApp: App {
@@ -916,7 +919,7 @@ class TaskAI {
             let cleaned = insight.snippet.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { continue }
             let capped = cleaned.count > 120 ? String(cleaned.prefix(117)) + "..." : cleaned
-            merged.append("Web concept check: \(insight.title) — \(capped)")
+            merged.append("AI concept check: \(insight.title) — \(capped)")
         }
         return Array(merged.prefix(10))
     }
@@ -2252,30 +2255,43 @@ struct WebInsight: Identifiable, Hashable {
 
 enum WebResearchService {
     static func fetchInsights(for query: String) async -> [WebInsight] {
-        let topic = TaskAI.extractTopic(from: query)
-        guard let encoded = topic.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://en.wikipedia.org/w/api.php?action=opensearch&search=\(encoded)&limit=3&namespace=0&format=json") else {
-            return []
+        #if canImport(FoundationModels)
+        if #available(iOS 18.2, macOS 15.2, visionOS 2.2, *) {
+            do {
+                let session = LanguageModelSession(instructions: """
+                You are an offline study assistant. Return exactly 3 lines.
+                Format for each line: Title: one practical concept sentence.
+                No markdown. No numbering.
+                """)
+                let response = try await session.respond(to: "Provide core concepts for this goal: \(query)")
+                let lines = response.content
+                    .split(separator: "\n")
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+                var insights: [WebInsight] = []
+                for line in lines.prefix(3) {
+                    let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
+                    if parts.count == 2 {
+                        insights.append(WebInsight(title: parts[0].trimmingCharacters(in: .whitespaces), snippet: parts[1].trimmingCharacters(in: .whitespaces), source: "On-Device Foundation Model", url: "local://foundationmodels"))
+                    } else {
+                        insights.append(WebInsight(title: "Core Concept", snippet: line, source: "On-Device Foundation Model", url: "local://foundationmodels"))
+                    }
+                }
+                if !insights.isEmpty { return insights }
+            } catch {
+                // Fall through to offline heuristic fallback.
+            }
         }
+        #endif
 
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            guard let root = try JSONSerialization.jsonObject(with: data) as? [Any], root.count >= 4,
-                  let titles = root[1] as? [String], let snippets = root[2] as? [String], let links = root[3] as? [String] else {
-                return []
-            }
-
-            var insights: [WebInsight] = []
-            for i in 0..<min(titles.count, snippets.count, links.count) {
-                let snippet = snippets[i].isEmpty ? "Read the overview and identify the 3 most important fundamentals." : snippets[i]
-                insights.append(WebInsight(title: titles[i], snippet: snippet, source: "Wikipedia", url: links[i]))
-            }
-            return insights
-        } catch {
-            return []
+        let fallback = TaskAI.breakdownTask(query).prefix(3)
+        return fallback.enumerated().map { idx, step in
+            WebInsight(title: "Offline Concept \(idx + 1)", snippet: step, source: "Offline Heuristics", url: "local://taskai")
         }
     }
 }
+
 
 // MARK: - Task Input Sheet
 
@@ -2464,7 +2480,7 @@ struct ResultsView: View {
             }
             if usedWebResearch {
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Web-assisted concepts", systemImage: "globe")
+                    Label("AI-assisted concepts", systemImage: "brain.head.profile")
                         .font(.system(.subheadline, design: .rounded)).bold().foregroundColor(.blue)
                     ForEach(insights.prefix(3)) { item in
                         VStack(alignment: .leading, spacing: 4) {
