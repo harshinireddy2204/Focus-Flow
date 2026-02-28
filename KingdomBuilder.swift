@@ -4,6 +4,9 @@ import AVFoundation
 import AudioToolbox
 import Speech
 import Foundation
+#if canImport(RealityKit)
+import RealityKit
+#endif
 
 @main
 struct FocusFlowApp: App {
@@ -521,7 +524,8 @@ class KingdomState: ObservableObject {
     @Published var knowledgeMap: [KnowledgeEntry] = []
     @Published var groupTopics: [UUID: String] = [:]
 
-    let focusDuration: Int = 15
+    @Published var useQuickTestTimer: Bool = true
+    var focusDuration: Int { useQuickTestTimer ? 15 : 25 * 60 }
     let coinsPerTask: Int = 10
     let groupBonusCoins: Int = 50
 
@@ -1271,14 +1275,85 @@ struct LevelProgressBar: View {
 
 // MARK: - Kingdom Landscape (Zoned Districts)
 
+struct ImmersiveLandscapeBackdrop: View {
+    let skyColors: [Color]
+    let width: CGFloat
+    let height: CGFloat
+    let level: Int
+    let reduceMotion: Bool
+    let zoomScale: CGFloat
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: skyColors, startPoint: .top, endPoint: .bottom)
+                .animation(.easeInOut(duration: 1.5), value: level)
+
+            if level >= 6 && !reduceMotion {
+                ForEach(0..<8, id: \.self) { i in
+                    SparkleView(x: CGFloat.random(in: 0...width), y: CGFloat.random(in: 0...(height*0.35)), delay: Double(i)*0.3)
+                }
+            }
+
+            if !reduceMotion {
+                FloatingCloud(width: 80, height: 30, startX: -80, y: height*0.1, speed: 28, containerWidth: width)
+                FloatingCloud(width: 110, height: 40, startX: -180, y: height*0.18, speed: 38, containerWidth: width)
+            }
+
+            MountainRange()
+                .fill(LinearGradient(colors: [Color(red:0.35,green:0.45,blue:0.55).opacity(0.5), Color(red:0.25,green:0.35,blue:0.45).opacity(0.3)], startPoint: .top, endPoint: .bottom))
+                .frame(height: height*0.45).offset(y: height*0.18)
+
+            RollingHills()
+                .fill(LinearGradient(colors: [Color(red:0.28,green:0.65,blue:0.3), Color(red:0.18,green:0.52,blue:0.22)], startPoint: .top, endPoint: .bottom))
+                .frame(height: height*0.5).offset(y: height*0.28)
+
+            VStack {
+                Spacer()
+                Rectangle()
+                    .fill(LinearGradient(colors: [Color(red:0.2,green:0.55,blue:0.2), Color(red:0.13,green:0.42,blue:0.13)], startPoint: .top, endPoint: .bottom))
+                    .frame(height: height*0.42)
+            }
+
+            VisionLandscapeRealityLayer(level: level, zoomScale: zoomScale)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+struct VisionLandscapeRealityLayer: View {
+    let level: Int
+    let zoomScale: CGFloat
+
+    var body: some View {
+        #if os(visionOS) && canImport(RealityKit)
+        RealityView { content in
+            let ground = ModelEntity(mesh: .generatePlane(width: 1.8, depth: 1.2), materials: [SimpleMaterial(color: .green.withAlphaComponent(0.35), isMetallic: false)])
+            ground.position = [0, -0.35, 0]
+            content.add(ground)
+
+            for i in 0..<6 {
+                let tower = ModelEntity(mesh: .generateBox(size: 0.08), materials: [SimpleMaterial(color: UIColor.systemTeal.withAlphaComponent(0.55), isMetallic: true)])
+                tower.position = [Float(-0.6 + Float(i) * 0.24), Float(-0.2 + Float(i % 2) * 0.05), -0.25]
+                content.add(tower)
+            }
+        } update: { content in
+            let s = Float(max(0.85, min(1.6, zoomScale)))
+            for entity in content.entities {
+                entity.scale = [s, s, s]
+            }
+        }
+        #else
+        Color.clear
+        #endif
+    }
+}
+
 struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var crowdStep = false
     @State private var zoomScale: CGFloat = 1.0
     @State private var baseZoomScale: CGFloat = 1.0
-    @State private var panOffset: CGSize = .zero
-    @State private var basePanOffset: CGSize = .zero
     @State private var cameraYaw: Double = 0
     @State private var cameraPitch: Double = 2
     var skyColors: [Color] {
@@ -1324,29 +1399,7 @@ struct KingdomView: View {
         GeometryReader { geo in
             let w = geo.size.width; let h = geo.size.height
             ZStack {
-                LinearGradient(colors: skyColors, startPoint: .top, endPoint: .bottom)
-                    .animation(.easeInOut(duration: 1.5), value: kingdom.level)
-
-                if kingdom.level >= 6 && !reduceMotion {
-                    ForEach(0..<8, id: \.self) { i in SparkleView(x: CGFloat.random(in: 0...w), y: CGFloat.random(in: 0...(h*0.35)), delay: Double(i)*0.3) }
-                }
-
-                if !reduceMotion {
-                    FloatingCloud(width: 80, height: 30, startX: -80, y: h*0.1, speed: 28, containerWidth: w)
-                    FloatingCloud(width: 110, height: 40, startX: -180, y: h*0.18, speed: 38, containerWidth: w)
-                }
-
-                MountainRange()
-                    .fill(LinearGradient(colors: [Color(red:0.35,green:0.45,blue:0.55).opacity(0.5), Color(red:0.25,green:0.35,blue:0.45).opacity(0.3)], startPoint: .top, endPoint: .bottom))
-                    .frame(height: h*0.45).offset(y: h*0.18)
-
-                RollingHills()
-                    .fill(LinearGradient(colors: [Color(red:0.28,green:0.65,blue:0.3), Color(red:0.18,green:0.52,blue:0.22)], startPoint: .top, endPoint: .bottom))
-                    .frame(height: h*0.5).offset(y: h*0.28)
-
-                VStack { Spacer()
-                    Rectangle().fill(LinearGradient(colors: [Color(red:0.2,green:0.55,blue:0.2), Color(red:0.13,green:0.42,blue:0.13)], startPoint: .top, endPoint: .bottom)).frame(height: h*0.42)
-                }
+                ImmersiveLandscapeBackdrop(skyColors: skyColors, width: w, height: h, level: kingdom.level, reduceMotion: reduceMotion, zoomScale: zoomScale)
 
                 ZoneRoadShape().stroke(Color.yellow.opacity(0.25), style: StrokeStyle(lineWidth: 4, dash: [8,6]))
                     .frame(width: w*0.7, height: h*0.28).position(x: w*0.5, y: h*0.76)
@@ -1427,20 +1480,16 @@ struct KingdomView: View {
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(
                 LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
-            .scaleEffect(zoomScale)
-            .offset(panOffset)
+            .scaleEffect(zoomScale, anchor: .center)
             .rotation3DEffect(.degrees(cameraPitch), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
             .rotation3DEffect(.degrees(cameraYaw), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        panOffset = CGSize(width: basePanOffset.width + value.translation.width,
-                                           height: basePanOffset.height + value.translation.height)
                         cameraYaw = max(-10, min(10, Double(value.translation.width / 24)))
                         cameraPitch = max(-4, min(12, 2 - Double(value.translation.height / 28)))
                     }
                     .onEnded { _ in
-                        basePanOffset = panOffset
                         withAnimation(.easeOut(duration: 0.3)) {
                             cameraYaw = 0
                             cameraPitch = 2
@@ -1460,8 +1509,6 @@ struct KingdomView: View {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                     zoomScale = 1.0
                     baseZoomScale = 1.0
-                    panOffset = .zero
-                    basePanOffset = .zero
                 }
             }
             .onAppear {
@@ -2466,6 +2513,7 @@ struct FocusTimerSheet: View {
     @EnvironmentObject var kingdom: KingdomState; @Binding var show: Bool; let task: TaskPiece
     @State private var timeLeft: Int; @State private var isRunning = false
     @State private var timer: Timer?; @State private var isComplete = false; @State private var breatheScale: CGFloat = 1.0
+    @State private var resetUsed = false
     init(show: Binding<Bool>, task: TaskPiece, duration: Int = 15) {
         self._show = show; self.task = task; self._timeLeft = State(initialValue: duration)
     }
@@ -2481,7 +2529,7 @@ struct FocusTimerSheet: View {
                     ZStack {
                         if isRunning { FocusShieldView(progress: progress) }
                         TimerContent(taskTitle: task.title, timeText: timeText, progress: progress, isRunning: isRunning, breatheScale: breatheScale,
-                                     streak: kingdom.focusStreak, onToggle: toggleTimer, onReset: resetTimer,
+                                     streak: kingdom.focusStreak, canReset: !resetUsed, onToggle: toggleTimer, onReset: resetTimer,
                                      onClose: { timer?.invalidate(); show = false })
                     }
                 }
@@ -2505,7 +2553,17 @@ struct FocusTimerSheet: View {
             withAnimation { breatheScale = 1.0 }; timer?.invalidate()
         }
     }
-    func resetTimer() { timer?.invalidate(); timeLeft = totalDuration; isRunning = false; withAnimation { breatheScale = 1.0 } }
+    func resetTimer() {
+        guard !resetUsed else {
+            AccessibilityAudio.shared.speak("Reset already used for this task. Keep going, you can do it!")
+            return
+        }
+        resetUsed = true
+        timer?.invalidate()
+        timeLeft = totalDuration
+        isRunning = false
+        withAnimation { breatheScale = 1.0 }
+    }
     func completeSession() { timer?.invalidate(); isRunning = false; kingdom.completeTask(task)
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) { isComplete = true } }
 }
@@ -2523,7 +2581,7 @@ struct AnimatedTimerBackground: View {
 
 struct TimerContent: View {
     let taskTitle: String; let timeText: String; let progress: Double; let isRunning: Bool
-    let breatheScale: CGFloat; let streak: Int
+    let breatheScale: CGFloat; let streak: Int; let canReset: Bool
     let onToggle: () -> Void; let onReset: () -> Void; let onClose: () -> Void
     var body: some View {
         VStack(spacing: 30) {
@@ -2534,6 +2592,7 @@ struct TimerContent: View {
                         .font(.system(.title3, design: .rounded)).foregroundColor(.white.opacity(0.9))
                 }
                 Text(taskTitle).font(.system(.headline, design: .rounded)).foregroundColor(.white).multilineTextAlignment(.center).padding(.horizontal)
+                Text("Quick test mode: 15s · Normal mode: 25m").font(.caption2).foregroundColor(.white.opacity(0.55))
                 if streak > 1 {
                     HStack(spacing: 4) { Text("🔥").font(.system(size: 14)); Text("\(streak) streak").font(.caption).foregroundColor(.orange) }
                 }
@@ -2564,7 +2623,9 @@ struct TimerContent: View {
                     ZStack { Circle().fill(Color.white.opacity(0.08)).frame(width: 72, height: 72)
                         Image(systemName: "arrow.counterclockwise").font(.system(size: 24)).foregroundColor(.white.opacity(0.7)) }
                 }
-                .accessibilityLabel("Reset timer")
+                .accessibilityLabel(canReset ? "Reset timer" : "Reset used")
+                .disabled(!canReset)
+                .opacity(canReset ? 1.0 : 0.45)
             }
             Spacer()
             Button(action: onClose) {
