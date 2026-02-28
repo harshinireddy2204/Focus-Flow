@@ -429,7 +429,7 @@ enum BuildingType: String, CaseIterable, Codable {
     var benefit: String {
         switch self {
         case .cottage: return "+2 population"; case .house: return "+5 population"; case .manor: return "+10 population"; case .palace: return "+25 population"
-        case .marketStall: return "+3 coins (one-time)"; case .shop: return "+8 coins (one-time)"; case .tradingPost: return "+15 coins (one-time)"; case .bank: return "+30 coins (one-time)"
+        case .marketStall: return "+3 coins / 24h"; case .shop: return "+8 coins / 24h"; case .tradingPost: return "+15 coins / 24h"; case .bank: return "+30 coins / 24h"
         case .library: return "+5% XP boost"; case .school: return "+10% XP boost"; case .university: return "+20% XP boost"; case .academy: return "+35% XP boost"
         case .watchtower: return "Streak shield (1)"; case .wall: return "Streak shield (2)"; case .fortress: return "Streak shield (3)"; case .castle: return "Streak shield (5)"
         case .garden: return "+5 beauty"; case .park: return "+10 beauty"; case .fountain: return "+20 beauty"; case .lake: return "+40 beauty"
@@ -458,7 +458,7 @@ struct KingdomBuilding: Identifiable, Codable {
     var jitterY: CGFloat
     var scale: CGFloat = 0.0
     var builtAt: Date = Date()
-    var hasCollected: Bool = false  // Economy buildings: one-time collection only
+    var lastCollectedAt: Date? = nil  // Economy buildings: collect every 24 hours
     init(id: UUID = UUID(), type: BuildingType, col: Int, row: Int, jitterX: CGFloat = 0, jitterY: CGFloat = 0) {
         self.id = id; self.type = type; self.col = col; self.row = row; self.jitterX = jitterX; self.jitterY = jitterY
     }
@@ -528,12 +528,42 @@ class KingdomState: ObservableObject {
     // MARK: Kingdom Stats
 
     var population: Int { buildings.filter { $0.type.category == .housing }.reduce(0) { $0 + $1.type.benefitValue } }
-    var economyIncome: Int { buildings.filter { $0.type.category == .economy && !$0.hasCollected }.reduce(0) { $0 + $1.type.benefitValue } }
+    
+    var economyIncome: Int {
+        buildings.filter { $0.type.category == .economy && canCollect(from: $0) }
+            .reduce(0) { $0 + $1.type.benefitValue }
+    }
+
     var xpBoostPercent: Int { buildings.filter { $0.type.category == .culture }.reduce(0) { $0 + $1.type.benefitValue } }
     var streakShield: Int { buildings.filter { $0.type.category == .defense }.reduce(0) { $0 + $1.type.benefitValue } }
     var beautyScore: Int { buildings.filter { $0.type.category == .nature }.reduce(0) { $0 + $1.type.benefitValue } }
 
     func buildingsInZone(_ cat: ShopCategory) -> [KingdomBuilding] { buildings.filter { $0.type.category == cat } }
+
+
+    func canCollect(from building: KingdomBuilding) -> Bool {
+        guard building.type.category == .economy else { return false }
+        guard let last = building.lastCollectedAt else { return true }
+        return Date().timeIntervalSince(last) >= 24 * 60 * 60
+    }
+
+    var nextEconomyCollectionText: String {
+        let economyBuildings = buildings.filter { $0.type.category == .economy }
+        guard !economyBuildings.isEmpty else { return "Build economy buildings to unlock recurring income." }
+
+        if economyBuildings.contains(where: { canCollect(from: $0) }) {
+            return "Some buildings are ready to collect now."
+        }
+
+        let nextInterval = economyBuildings.compactMap { b -> TimeInterval? in
+            guard let last = b.lastCollectedAt else { return 0 }
+            return max(0, 24 * 60 * 60 - Date().timeIntervalSince(last))
+        }.min() ?? 0
+
+        let hours = Int(nextInterval) / 3600
+        let minutes = (Int(nextInterval) % 3600) / 60
+        return "Next payout in \(hours)h \(minutes)m"
+    }
 
     var level: Int {
         let xp = totalXP
@@ -572,7 +602,7 @@ class KingdomState: ObservableObject {
         let h = cats[.housing]?.count ?? 0; let e = cats[.economy]?.count ?? 0
         let c = cats[.culture]?.count ?? 0; let d = cats[.defense]?.count ?? 0
         let n = cats[.nature]?.count ?? 0; let t = buildings.count
-        if e == 0 && t >= 1 { return "Build a Market Stall — collect a one-time coin bonus!" }
+        if e == 0 && t >= 1 { return "Build a Market Stall — collect recurring coins every 24 hours!" }
         if d == 0 && focusStreak >= 3 { return "Protect your streak! Build a Watchtower on the border." }
         if c == 0 && t >= 3 { return "A Library in the Cultural Quarter will boost XP!" }
         if n == 0 && t >= 4 { return "Citizens want parks! Beautify with a Garden." }
@@ -660,10 +690,11 @@ class KingdomState: ObservableObject {
         guard amount > 0 else { return }
         Haptics.impact(.light)
         AccessibilityAudio.shared.coinSound()
-        AccessibilityAudio.shared.speak("Collected \(amount) coins from your shops. One-time collection — each building pays once.")
+        AccessibilityAudio.shared.speak("Collected \(amount) coins from your economy buildings. Collect again in 24 hours.")
         coins += amount
-        for i in buildings.indices where buildings[i].type.category == .economy && !buildings[i].hasCollected {
-            buildings[i].hasCollected = true
+        let now = Date()
+        for i in buildings.indices where buildings[i].type.category == .economy && canCollect(from: buildings[i]) {
+            buildings[i].lastCollectedAt = now
         }
     }
     func canAfford(_ type: BuildingType) -> Bool { coins >= type.cost }
@@ -1244,6 +1275,12 @@ struct KingdomView: View {
     @EnvironmentObject var kingdom: KingdomState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var crowdStep = false
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var baseZoomScale: CGFloat = 1.0
+    @State private var panOffset: CGSize = .zero
+    @State private var basePanOffset: CGSize = .zero
+    @State private var cameraYaw: Double = 0
+    @State private var cameraPitch: Double = 2
     var skyColors: [Color] {
         switch kingdom.level {
         case 1: return [Color(red:0.98,green:0.7,blue:0.5), Color(red:0.55,green:0.75,blue:0.95)]
@@ -1268,13 +1305,18 @@ struct KingdomView: View {
     ]}
 
     func zonePosition(zone: ZoneLayout, index: Int, total: Int, w: CGFloat, h: CGFloat, jx: CGFloat, jy: CGFloat) -> CGPoint {
-        let cols = max(1, min(4, total))
-        let col = index % cols; let row = index / cols
+        let cols = max(1, min(8, Int(ceil(sqrt(Double(max(total, 1)))) * 2)))
+        let col = index % cols
+        let row = index / cols
+        let rows = max(1, Int(ceil(Double(total) / Double(cols))))
+
         let xSpan = zone.xRange.upperBound - zone.xRange.lowerBound
         let ySpan = zone.yRange.upperBound - zone.yRange.lowerBound
         let cellW = xSpan / CGFloat(cols)
+        let rowSpacing = min(0.06, ySpan / CGFloat(max(rows, 1)))
+
         let x = (zone.xRange.lowerBound + cellW * (CGFloat(col) + 0.5) + jx) * w
-        let y = (zone.yRange.lowerBound + CGFloat(row) * min(ySpan * 0.5, 0.08) + jy) * h
+        let y = (zone.yRange.lowerBound + CGFloat(row) * rowSpacing + jy) * h
         return CGPoint(x: x, y: y)
     }
 
@@ -1378,11 +1420,6 @@ struct KingdomView: View {
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(.ultraThinMaterial).clipShape(Capsule()).padding(10)
                     }
-                    HStack {
-                        Spacer()
-                        DistrictIconLegend2D(kingdom: kingdom)
-                            .padding(.trailing, 10)
-                    }
                     Spacer()
                 }
             }
@@ -1390,8 +1427,49 @@ struct KingdomView: View {
             .overlay(RoundedRectangle(cornerRadius: 24).stroke(
                 LinearGradient(colors: [.white.opacity(0.5),.white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
             .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
-            .rotation3DEffect(.degrees(2), axis: (x: 1, y: 0, z: 0), perspective: 0.3)
-            .onAppear { crowdStep = true }
+            .scaleEffect(zoomScale)
+            .offset(panOffset)
+            .rotation3DEffect(.degrees(cameraPitch), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
+            .rotation3DEffect(.degrees(cameraYaw), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        panOffset = CGSize(width: basePanOffset.width + value.translation.width,
+                                           height: basePanOffset.height + value.translation.height)
+                        cameraYaw = max(-10, min(10, Double(value.translation.width / 24)))
+                        cameraPitch = max(-4, min(12, 2 - Double(value.translation.height / 28)))
+                    }
+                    .onEnded { _ in
+                        basePanOffset = panOffset
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            cameraYaw = 0
+                            cameraPitch = 2
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        zoomScale = min(2.4, max(0.75, baseZoomScale * value))
+                    }
+                    .onEnded { _ in
+                        baseZoomScale = zoomScale
+                    }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    zoomScale = 1.0
+                    baseZoomScale = 1.0
+                    panOffset = .zero
+                    basePanOffset = .zero
+                }
+            }
+            .onAppear {
+                crowdStep = true
+                let growthScale = min(2.0, 1.0 + CGFloat(kingdom.buildings.count) * 0.02)
+                zoomScale = max(zoomScale, growthScale)
+                baseZoomScale = zoomScale
+            }
         }
     }
 }
@@ -1431,39 +1509,6 @@ struct KingdomBuildingMarker3D: View {
     }
 }
 
-struct DistrictIconLegend2D: View {
-    @ObservedObject var kingdom: KingdomState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("District Icon Map")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundColor(.white.opacity(0.9))
-
-            LazyVGrid(columns: [GridItem(.fixed(18)), GridItem(.fixed(18)), GridItem(.fixed(18))], spacing: 6) {
-                ForEach(ShopCategory.allCases, id: \.rawValue) { category in
-                    let hasAny = !kingdom.buildingsInZone(category).isEmpty
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(category.color.opacity(hasAny ? 0.4 : 0.18))
-                            .frame(width: 18, height: 18)
-                        Image(systemName: category.icon)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(hasAny ? .white : .white.opacity(0.55))
-                    }
-                    .accessibilityLabel("\(category.name) zone icon")
-                }
-            }
-        }
-        .padding(8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("2D district icon layout")
-    }
-}
-
 
 struct ZoneRoadShape: Shape {
     func path(in rect: CGRect) -> Path {
@@ -1494,7 +1539,7 @@ struct BuildingInteriorSheet: View {
                     BuildingInfoCard(type: building.type, buildingsOfType: kingdom.buildingsOfType(building.type))
                     BuildingStatsCard(type: building.type, kingdom: kingdom)
                     if building.type.category == .culture { KnowledgeSection(knowledge: kingdom.knowledgeMap) }
-                    if building.type.category == .economy { EconomySection(income: kingdom.economyIncome) }
+                    if building.type.category == .economy { EconomySection(income: kingdom.economyIncome, nextText: kingdom.nextEconomyCollectionText) }
                     if building.type.category == .defense { DefenseSection(shield: kingdom.streakShield, streak: kingdom.focusStreak) }
                     RecentActivitySection(history: Array(kingdom.taskHistory.suffix(5).reversed()))
                 }.padding(18)
@@ -1680,18 +1725,19 @@ struct KnowledgeSection: View {
 
 struct EconomySection: View {
     let income: Int
+    let nextText: String
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Image(systemName: "chart.line.uptrend.xyaxis").foregroundColor(.green); Text("Economy Report").font(.system(.headline, design: .rounded)); Spacer() }
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(income > 0 ? "Ready to collect (one-time)" : "All collected").font(.caption).foregroundColor(.secondary)
-                    Text(income > 0 ? "+\(income) coins" : "Each shop pays once").font(.system(.title3, design: .rounded)).bold().foregroundColor(income > 0 ? .green : .secondary)
+                    Text(income > 0 ? "Ready to collect now" : nextText).font(.caption).foregroundColor(.secondary)
+                    Text(income > 0 ? "+\(income) coins" : "Recurring every 24h").font(.system(.title3, design: .rounded)).bold().foregroundColor(income > 0 ? .green : .secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Status").font(.caption).foregroundColor(.secondary)
-                    Text(income > 0 ? "Collect in Shop" : "Fully collected")
+                    Text(income > 0 ? "Collect in Shop" : "Waiting 24h")
                         .font(.subheadline).bold().foregroundColor(income > 0 ? .green : .secondary)
                 }
             }
@@ -2730,8 +2776,8 @@ struct KingdomShopView: View {
                         ShopWalletBar(coins: kingdom.coins, buildings: kingdom.buildingCount)
                         KingdomStatsBar()
                         ShopAdvisorBanner(tip: kingdom.aiAdvisorTip)
-                        if kingdom.economyIncome > 0 {
-                            ShopCollectIncomeButton(income: kingdom.economyIncome) { kingdom.collectEconomyIncome() }
+                        if !kingdom.buildingsInZone(.economy).isEmpty {
+                            ShopCollectIncomeButton(income: kingdom.economyIncome, nextText: kingdom.nextEconomyCollectionText) { kingdom.collectEconomyIncome() }
                         }
                         ShopCategoryPicker(selected: $selectedCategory)
                         ShopCategoryDescription(category: selectedCategory)
@@ -2845,15 +2891,15 @@ struct ShopAdvisorBanner: View {
 }
 
 struct ShopCollectIncomeButton: View {
-    let income: Int; let action: () -> Void
+    let income: Int; let nextText: String; let action: () -> Void
     @State private var pulse = false
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: "dollarsign.circle.fill").font(.title3).scaleEffect(pulse ? 1.15 : 1.0)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Collect One-Time Bonus").font(.system(.subheadline, design: .rounded)).bold()
-                    Text("+\(income) coins — each building pays once").font(.caption)
+                    Text("Collect 24h Economy Bonus").font(.system(.subheadline, design: .rounded)).bold()
+                    Text(income > 0 ? "+\(income) coins ready now" : nextText).font(.caption)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption)
