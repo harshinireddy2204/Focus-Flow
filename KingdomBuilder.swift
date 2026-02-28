@@ -1089,6 +1089,18 @@ class OnDeviceTaskAI: ObservableObject {
     }
 }
 
+
+private struct TriangleRoof: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
 enum BuildingLevel: Int, Comparable {
     case foundation = 0, built = 1, upgraded = 2, legendary = 3
     static func < (lhs: BuildingLevel, rhs: BuildingLevel) -> Bool { lhs.rawValue < rhs.rawValue }
